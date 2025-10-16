@@ -1,0 +1,21 @@
+[project]
+name = "tg-chat-manager"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aerich[toml]>=0.9.2",
+    "aiogram>=3.22.0",
+    "asyncpg>=0.30.0",
+    "fastapi[standard]>=0.119.0",
+    "loguru>=0.7.3",
+    "pydantic-settings>=2.11.0",
+    "pyrogram>=2.0.106",
+    "tortoise-orm>=0.25.1",
+]
+
+[tool.aerich]
+tortoise_orm = "src.core.config.database_config"
+location = "./migrations"
+src_folder = "./."
