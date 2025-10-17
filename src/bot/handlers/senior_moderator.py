@@ -3,14 +3,14 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.enums import ChatType
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import CommandObject
 from aiogram.types import ChatPermissions
 
-from src.bot.filters import RoleFilter
+from src.bot.filters import Command, RoleFilter
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import CallbackQuery, Message
+from src.bot.utils import get_user_display, get_user_id_by_username
 from src.core import enums, managers
-from src.core.utils import get_user_display
 
 router = Router()
 
@@ -50,14 +50,8 @@ async def set_nick(message: Message, command: CommandObject):
             return
         username = args[0].lstrip("@")
         nick = args[1].strip()
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
@@ -70,7 +64,9 @@ async def set_nick(message: Message, command: CommandObject):
         target_user_id, message.chat.id, nick, message.from_user.id
     )
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(f"Ник установлен пользователю {username}: <code>{nick}</code>.")
+    await message.answer(
+        f"Ник установлен пользователю {username}: <code>{nick}</code>."
+    )
 
 
 @router.message(
@@ -83,14 +79,8 @@ async def remove_nick(message: Message, command: CommandObject):
         target_user_id = message.reply_to_message.from_user.id
     elif command.args:
         username = command.args.lstrip("@")
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
@@ -113,7 +103,7 @@ async def mute_user(message: Message, command: CommandObject):
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user_id = message.reply_to_message.from_user.id
         args = command.args.split(maxsplit=1) if command.args else []
-        duration_str = args[0] if args else "1h"
+        duration = _parse_duration(args[0]) if args else timedelta(days=400)
         reason = args[1] if len(args) > 1 else None
     else:
         try:
@@ -122,10 +112,9 @@ async def mute_user(message: Message, command: CommandObject):
             args = command.args.split(maxsplit=2)
             username = args[0].lstrip("@")
             if len(args) > 1 and (duration := _parse_duration(args[1])):
-                duration_str = args[1]
                 reason = args[2] if len(args) > 2 else None
             else:
-                duration_str = "400d"
+                duration = timedelta(days=400)
                 reason = args[1] if len(args) > 1 else None
         except Exception:
             await message.answer(
@@ -133,19 +122,11 @@ async def mute_user(message: Message, command: CommandObject):
             )
             return
 
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
 
-    if not duration:
-        duration = _parse_duration(duration_str)
     if not duration:
         await message.answer("Неверный формат времени. Используйте: 10m, 1h, 1d.")
         return
@@ -187,13 +168,13 @@ async def mute_user(message: Message, command: CommandObject):
     msk_tz = timezone(timedelta(hours=3))
     end_at_msk = end_at.astimezone(msk_tz)
     end_at_text = (
-        f" до {end_at_msk.strftime('%d.%m.%Y %H:%M')}"
+        f"до {end_at_msk.strftime('%d.%m.%Y %H:%M')}"
         if end_at - datetime.now(timezone.utc) < timedelta(days=365)
         else "навсегда"
     )
     await message.answer(
-        f"Пользователь {username} замучен{end_at_text}.{f' Причина: {reason}' if reason else ''}",
-        reply_markup=keyboards.mute_actions(target_user_id),
+        f"Пользователь {username} замучен {end_at_text}.{f' Причина: {reason}' if reason else ''}",
+        reply_markup=keyboards.mute_actions(message.from_user.id, target_user_id),
     )
 
 
@@ -207,14 +188,8 @@ async def unmute_user(message: Message, command: CommandObject):
         target_user_id = message.reply_to_message.from_user.id
     elif command.args:
         username = command.args.lstrip("@")
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
@@ -255,12 +230,16 @@ async def mute_callback(query: CallbackQuery, callback_data: callbackdata.MuteAc
         await query.answer("Нельзя замутить бота.", show_alert=True)
         return
 
-    target_member = await query.bot.get_chat_member(query.message.chat.id, callback_data.user_id)
+    target_member = await query.bot.get_chat_member(
+        query.message.chat.id, callback_data.user_id
+    )
     if target_member.status in ["creator", "administrator"]:
         await query.answer("Нельзя замутить администратора.", show_alert=True)
         return
 
-    existing_mute = await managers.mutes.get(callback_data.user_id, query.message.chat.id)
+    existing_mute = await managers.mutes.get(
+        callback_data.user_id, query.message.chat.id
+    )
     reason = existing_mute.reason if existing_mute else None
 
     start_at = datetime.now(timezone.utc)
@@ -284,17 +263,19 @@ async def mute_callback(query: CallbackQuery, callback_data: callbackdata.MuteAc
         auto_unmute=True,
     )
 
-    username = await get_user_display(callback_data.user_id, query.bot, query.message.chat.id)
+    username = await get_user_display(
+        callback_data.user_id, query.bot, query.message.chat.id
+    )
     msk_tz = timezone(timedelta(hours=3))
     end_at_msk = end_at.astimezone(msk_tz)
     end_at_text = (
-        f" до {end_at_msk.strftime('%d.%m.%Y %H:%M')}"
+        f"до {end_at_msk.strftime('%d.%m.%Y %H:%M')}"
         if end_at - datetime.now(timezone.utc) < timedelta(days=365)
         else "навсегда"
     )
     await query.message.edit_text(
-        f"Пользователь {username} замучен{end_at_text}.{f' Причина: {reason}' if reason else ''}",
-        reply_markup=keyboards.mute_actions(callback_data.user_id),
+        f"Пользователь {username} замучен {end_at_text}.{f' Причина: {reason}' if reason else ''}",
+        reply_markup=keyboards.mute_actions(query.from_user.id, callback_data.user_id),
     )
 
 
@@ -315,10 +296,12 @@ async def unmute_callback(
     )
 
     await managers.mutes.remove_mute(callback_data.user_id, query.message.chat.id)
-    username = await get_user_display(callback_data.user_id, query.bot, query.message.chat.id)
+    username = await get_user_display(
+        callback_data.user_id, query.bot, query.message.chat.id
+    )
     await query.message.edit_text(
         f"Мут снят с пользователя {username}.",
-        reply_markup=keyboards.mute_actions(callback_data.user_id),
+        reply_markup=keyboards.mute_actions(callback_data.user_id, callback_data.user_id),
     )
 
 
@@ -368,53 +351,66 @@ async def unpin_message(message: Message):
     RoleFilter(enums.Role.senior_moderator),
 )
 async def set_role(message: Message, command: CommandObject):
+    allowed_roles = [role.value for role in enums.Role]
+    help_text = (
+        f"Использование: /setrole [{'|'.join(allowed_roles)}] ответом на сообщение."
+    )
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user_id = message.reply_to_message.from_user.id
         if not command.args:
-            await message.answer("Использование: /setrole [user|moderator] ответом на сообщение.")
+            await message.answer(help_text)
             return
         role_str = command.args.strip().lower()
     elif command.args:
         args = command.args.split(maxsplit=1)
         if len(args) < 2:
-            await message.answer("Использование: /setrole @username [user|moderator] или ответом на сообщение.")
+            await message.answer(help_text)
             return
         username = args[0].lstrip("@")
         role_str = args[1].strip().lower()
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
-        await message.answer("Использование: /setrole @username [user|moderator] или ответом на сообщение.")
+        await message.answer(help_text)
         return
 
     try:
         role = enums.Role(role_str)
     except ValueError:
-        await message.answer("Неверная роль. Доступны: user, moderator, senior_moderator, admin.")
+        await message.answer(
+            f"Неверная роль. Доступны только: {', '.join(allowed_roles)}."
+        )
         return
 
     is_owner = await managers.users.is_owner(message.from_user.id)
-    author_role = await managers.user_roles.get(
-        managers.user_roles.make_cache_key(message.from_user.id, message.chat.id), "level"
-    ) or enums.Role.user
+    author_role = (
+        await managers.user_roles.get(
+            managers.user_roles.make_cache_key(message.from_user.id, message.chat.id),
+            "level",
+        )
+        or enums.Role.user
+    )
 
     if role == enums.Role.admin and not is_owner:
         await message.answer("Только владелец может выдавать роль admin.")
         return
 
-    if role == enums.Role.senior_moderator and author_role.level < enums.Role.admin.level:
-        await message.answer("Только администратор может выдавать роль senior_moderator.")
+    if (
+        role == enums.Role.senior_moderator
+        and author_role.level < enums.Role.admin.level
+    ):
+        await message.answer(
+            "Только администратор может выдавать роль senior_moderator."
+        )
         return
 
-    if role.level > enums.Role.moderator.level and author_role.level < enums.Role.admin.level and not is_owner:
+    if (
+        role.level > enums.Role.moderator.level
+        and author_role.level < enums.Role.admin.level
+        and not is_owner
+    ):
         await message.answer("Вы можете выдавать только роли user и moderator.")
         return
 
@@ -430,10 +426,14 @@ async def set_role(message: Message, command: CommandObject):
         managers.user_roles.make_cache_key(target_user_id, message.chat.id), "level"
     )
     if target_role and target_role.level >= author_role.level and not is_owner:
-        await message.answer("Нельзя изменить роль пользователя с ролью равной или выше вашей.")
+        await message.answer(
+            "Нельзя изменить роль пользователя с ролью равной или выше вашей."
+        )
         return
 
-    await managers.user_roles.add_role(target_user_id, message.chat.id, role, message.from_user.id)
+    await managers.user_roles.add_role(
+        target_user_id, message.chat.id, role, message.from_user.id
+    )
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
     await message.answer(f"Роль {role.value} установлена пользователю {username}.")
 
@@ -448,18 +448,14 @@ async def remove_role(message: Message, command: CommandObject):
         target_user_id = message.reply_to_message.from_user.id
     elif command.args:
         username = command.args.lstrip("@")
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
-        await message.answer("Использование: /removerole @username или ответом на сообщение.")
+        await message.answer(
+            "Использование: /removerole @username или ответом на сообщение."
+        )
         return
 
     if target_user_id == message.from_user.id:
@@ -471,15 +467,21 @@ async def remove_role(message: Message, command: CommandObject):
         return
 
     is_owner = await managers.users.is_owner(message.from_user.id)
-    author_role = await managers.user_roles.get(
-        managers.user_roles.make_cache_key(message.from_user.id, message.chat.id), "level"
-    ) or enums.Role.user
+    author_role = (
+        await managers.user_roles.get(
+            managers.user_roles.make_cache_key(message.from_user.id, message.chat.id),
+            "level",
+        )
+        or enums.Role.user
+    )
 
     target_role = await managers.user_roles.get(
         managers.user_roles.make_cache_key(target_user_id, message.chat.id), "level"
     )
     if target_role and target_role.level >= author_role.level and not is_owner:
-        await message.answer("Нельзя удалить роль пользователя с ролью равной или выше вашей.")
+        await message.answer(
+            "Нельзя удалить роль пользователя с ролью равной или выше вашей."
+        )
         return
 
     await managers.user_roles.remove_role(target_user_id, message.chat.id)

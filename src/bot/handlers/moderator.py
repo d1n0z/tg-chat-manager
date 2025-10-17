@@ -1,12 +1,12 @@
 from aiogram import F, Router
 from aiogram.enums import ChatType
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import CommandObject
 
-from src.bot.filters import RoleFilter
+from src.bot.filters import Command, RoleFilter
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import CallbackQuery, Message
+from src.bot.utils import get_user_display, get_user_id_by_username
 from src.core import enums, managers
-from src.core.utils import get_user_display
 
 router = Router()
 
@@ -25,9 +25,7 @@ async def _prepare_nick_list(chat_id: int, page: int, bot, bot_chat_id: int):
     results = []
     for k, (nick_str, tg_user_id) in enumerate(page_nicks, start=(page * per_page) + 1):
         username = await get_user_display(tg_user_id, bot, bot_chat_id)
-        results.append(
-            f"[{k}]. Ник: {nick_str} | {username}"
-        )
+        results.append(f"[{k}]. Ник: {nick_str} | {username}")
 
     return len(nick_list_data), results, page, total_pages
 
@@ -99,14 +97,8 @@ async def get_nick(message: Message, command: CommandObject):
         target_user_id = message.reply_to_message.from_user.id
     elif command.args:
         username = command.args.lstrip("@")
-        try:
-            if not managers.pyrogram_client.is_connected:
-                await managers.pyrogram_client.start()
-            user = await managers.pyrogram_client.get_users(username)
-            if isinstance(user, list):
-                user = user[0]
-            target_user_id = user.id
-        except Exception:
+        target_user_id = await get_user_id_by_username(username)
+        if not target_user_id:
             await message.answer(f"Пользователь @{username} не найден.")
             return
     else:
@@ -143,7 +135,7 @@ async def nick_list(message: Message, command: CommandObject):
 
     await message.answer(
         f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
-        reply_markup=keyboards.nick_list_paginate(page, total_pages, message.chat.id),
+        reply_markup=keyboards.nick_list_paginate(message.from_user.id, page, total_pages, message.chat.id),
     )
 
 
@@ -158,7 +150,7 @@ async def nick_list_page(
     await query.message.edit_text(
         f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
         reply_markup=keyboards.nick_list_paginate(
-            page, total_pages, callback_data.chat_id
+            query.from_user.id, page, total_pages, callback_data.chat_id
         ),
     )
 

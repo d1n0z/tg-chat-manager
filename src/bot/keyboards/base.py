@@ -5,12 +5,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-class AutoKeyboard:
+class MagicKeyboard:
     _kb: InlineKeyboardBuilder
+    _initiator_id: int
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, initiator_id: int, *args, **kwargs):
         self = super().__new__(cls)
         self._kb = InlineKeyboardBuilder()
+        self._initiator_id = initiator_id
         cls.__init__(self, *args, **kwargs)
         return self._kb.as_markup()
 
@@ -45,6 +47,8 @@ class AutoKeyboard:
         return self
 
     def cb(self, text: str, data: CallbackData | str):
+        if isinstance(data, CallbackData) and hasattr(data, "initiator_id"):
+            data.initiator_id = self._initiator_id  # type: ignore
         callback_data = data.pack() if isinstance(data, CallbackData) else data
         return InlineKeyboardButton(text=text, callback_data=callback_data)
 

@@ -1,6 +1,6 @@
 import urllib.parse
 
-from src.bot.keyboards.base import AutoKeyboard
+from src.bot.keyboards.base import MagicKeyboard
 from src.bot.keyboards.callbackdata import (
     ChatSelect,
     ChatsPaginate,
@@ -11,13 +11,13 @@ from src.bot.keyboards.callbackdata import (
 )
 
 
-class start(AutoKeyboard):
+class start(MagicKeyboard):
     def __init__(self):
         self.row(self.cb("Все чаты", "all_chats"))
         self.row(self.cb("Помощь", "command_help"))
 
 
-class chats_paginate(AutoKeyboard):
+class chats_paginate(MagicKeyboard):
     def __init__(self, chats: list[tuple[int, str]], page: int = 0, maxpage: int = 0):
         for i in range(0, len(chats), 2):
             row_buttons = [self.cb(chats[i][1], ChatSelect(chat_id=chats[i][0]))]
@@ -40,7 +40,7 @@ class chats_paginate(AutoKeyboard):
         self.row(self.cb("Назад", "start"))
 
 
-class chat_card(AutoKeyboard):
+class chat_card(MagicKeyboard):
     def __init__(self, chat_id: int, invite_url: str | None = None):
         self.row(
             self.cb(
@@ -57,12 +57,12 @@ class chat_card(AutoKeyboard):
         self.row(self.cb("Назад", "all_chats"))
 
 
-class help(AutoKeyboard):
+class help(MagicKeyboard):
     def __init__(self):
         self.row(self.cb("Назад", "start"))
 
 
-class nick_list_paginate(AutoKeyboard):
+class nick_list_paginate(MagicKeyboard):
     def __init__(self, page: int, maxpage: int, chat_id: int):
         row = []
         if page > 0:
@@ -84,7 +84,7 @@ class nick_list_paginate(AutoKeyboard):
             self.row(*row)
 
 
-class mute_actions(AutoKeyboard):
+class mute_actions(MagicKeyboard):
     def __init__(self, user_id: int):
         self.row(
             self.cb("🔇 Мут 1ч", MuteAction(user_id=user_id, duration="1h")),

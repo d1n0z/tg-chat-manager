@@ -1,10 +1,9 @@
 from aiogram import Router
-from aiogram.filters import Command
 
-from src.bot.filters import IsOwnerFilter
+from src.bot.filters import Command, IsOwnerFilter
 from src.bot.types import Message
+from src.bot.utils import get_user_display
 from src.core import enums, managers
-from src.core.utils import get_user_display
 
 router = Router()
 

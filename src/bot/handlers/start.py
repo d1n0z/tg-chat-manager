@@ -6,8 +6,8 @@ import loguru
 from aiogram import F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command, CommandStart
 
+from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
 from src.core import enums, managers
@@ -25,13 +25,13 @@ async def answer_to(
 router = Router()
 
 
-@router.message(CommandStart(), F.chat.type == ChatType.PRIVATE)
+@router.message(Command("start"), F.chat.type == ChatType.PRIVATE)
 @router.callback_query(F.data == "start")
 async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     await answer_to(
         message_or_callback_querry,
         text="Добро пожаловать.",
-        reply_markup=keyboards.start(),
+        reply_markup=keyboards.start(message_or_callback_querry.from_user.id),
     )
 
 
@@ -44,7 +44,7 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 Модератор: /clear, /gbynick, /gnick, /nlist, /staff.\n
 Старший модератор: /mute, /unmute, /pin, /unpin, /setrole, /removerole, /snick, /rnick.\n
 Администратор: /kick, /gkick, /gban, /gunban, /unban, /words, /news, /cluster, /setwelcome, /getwelcome, /resetwelcome.""",
-        reply_markup=keyboards.help(),
+        reply_markup=keyboards.help(message_or_callback_querry.from_user.id),
     )
 
 
@@ -68,7 +68,9 @@ async def all_chats(
 
     await query.message.edit_text(
         text="Выберите чат:",
-        reply_markup=keyboards.chats_paginate(page_chats, page, total_pages),
+        reply_markup=keyboards.chats_paginate(
+            query.from_user.id, page_chats, page, total_pages
+        ),
     )
 
 
@@ -95,12 +97,14 @@ async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSe
 
     await query.message.edit_text(
         text=text,
-        reply_markup=keyboards.chat_card(tg_chat_id, invite_url),
+        reply_markup=keyboards.chat_card(query.from_user.id, tg_chat_id, invite_url),
     )
 
 
 @router.callback_query(callbackdata.GenerateInvite.filter())
-async def generate_invite(query: CallbackQuery, callback_data: callbackdata.GenerateInvite):
+async def generate_invite(
+    query: CallbackQuery, callback_data: callbackdata.GenerateInvite
+):
     tg_chat_id = int(callback_data.chat_id)
 
     bot = query.bot
@@ -144,7 +148,9 @@ ID: {tg_chat_id}\n
 
         await query.message.edit_text(
             text=text,
-            reply_markup=keyboards.chat_card(tg_chat_id, invite_url),
+            reply_markup=keyboards.chat_card(
+                query.from_user.id, tg_chat_id, invite_url
+            ),
         )
     except Exception as e:
         if "message is not modified" in str(e):

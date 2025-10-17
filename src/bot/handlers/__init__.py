@@ -8,7 +8,7 @@ from src.bot.handlers import primary
 
 
 def find_routers(folder_path):
-    routers = [primary.router]
+    routers = []
     for root, _, files in os.walk(folder_path):
         for file in files:
             if file.endswith(".py") and file not in ("__init__.py", "primary.py"):
@@ -23,6 +23,7 @@ def find_routers(folder_path):
 
                 if hasattr(module, "router"):
                     routers.append(getattr(module, "router"))
+    routers.append(primary.router)
     return routers
 
 

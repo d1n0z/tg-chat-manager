@@ -235,5 +235,19 @@ class ClusterSetting(Model):
         unique_together = (("cluster_id", "key"),)
 
 
+class WordFilter(Model):
+    """Фильтр запрещённых слов в чатах."""
+    id = fields.IntField(primary_key=True)
+    chat = fields.ForeignKeyField("models.Chat", related_name="word_filters", on_delete=fields.CASCADE)
+    word = fields.CharField(max_length=255)
+    added_by = fields.ForeignKeyField("models.User", related_name="added_word_filters", null=True, on_delete=fields.SET_NULL)
+    added_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "word_filters"
+        unique_together = (("chat_id", "word"),)
+        indexes = [("chat_id",)]
+
+
 async def init():
     await Cluster.get_or_create(name="GLOBAL", defaults={"is_global": True})

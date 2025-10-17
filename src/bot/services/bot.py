@@ -59,7 +59,7 @@ class BotService:
         )
 
         for mw in loaded_middlewares:
-            self.dp.message.middleware(mw())
+            self.dp.update.middleware(mw())
 
         self._dp.include_router(handlers.root_router)
 

@@ -1,4 +1,6 @@
-from aiogram.filters import BaseFilter
+from typing import Any
+
+from aiogram.filters import BaseFilter, Command as AiogramCommand
 from aiogram.types import Message
 
 from src.core import enums, managers
@@ -20,3 +22,7 @@ class IsOwnerFilter(BaseFilter):
         if not message.from_user:
             return False
         return await managers.users.is_owner(message.from_user.id)
+
+
+class Command(AiogramCommand):
+    pass

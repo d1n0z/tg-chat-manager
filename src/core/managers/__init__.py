@@ -16,6 +16,7 @@ from src.core.managers.nicks import NickManager
 from src.core.managers.user_roles import UserRoleManager
 from src.core.managers.users import UserManager
 from src.core.managers.welcome_messages import WelcomeMessageManager
+from src.core.managers.word_filter import WordFilterManager
 
 to_init = [
     clusters := ClusterManager(),
@@ -33,6 +34,7 @@ to_init = [
     nicks := NickManager(),
     user_roles := UserRoleManager(),
     welcome_messages := WelcomeMessageManager(),
+    word_filters := WordFilterManager(),
 ]
 pyrogram_client = Client(
     "bot", api_id=settings.API_ID, api_hash=settings.API_HASH, bot_token=settings.TOKEN

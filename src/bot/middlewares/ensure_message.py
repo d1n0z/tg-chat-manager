@@ -1,24 +1,25 @@
-from typing import Any, Awaitable, Callable, Union
+from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.event.bases import CancelHandler
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message
+from aiogram.types import InaccessibleMessage, Update
 
 
 class EnsureMessageMiddleware(BaseMiddleware):
     async def __call__(
         self,
-        handler: Callable[[Union[Message, CallbackQuery], dict[str, Any]], Awaitable[Any]],
-        event: Union[Message, CallbackQuery],
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
         data: dict[str, Any],
     ) -> Any:
-        _message = None
-        if isinstance(event, CallbackQuery):
-            if not event.message or isinstance(event.message, InaccessibleMessage) or not event.bot:
+        if event.message:
+            if not event.message.bot or not event.message.from_user:
                 raise CancelHandler()
-            _message = event.message
-        if isinstance(event, Message) or _message:
-            _to_check = _message or event
-            if not _to_check.bot or not _to_check.from_user:
+        elif event.callback_query:
+            if (
+                not event.callback_query.message
+                or isinstance(event.callback_query.message, InaccessibleMessage)
+                or not event.callback_query.bot
+            ):
                 raise CancelHandler()
         return await handler(event, data)
