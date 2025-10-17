@@ -74,17 +74,17 @@ class UserRole(Model):
 
 
 class Nick(Model):
-    """Внутренние ники (технические ники) пользователей в рамках кластера."""
+    """Внутренние ники пользователей в чатах."""
     id = fields.IntField(primary_key=True)
     user = fields.ForeignKeyField("models.User", related_name="nicks", on_delete=fields.CASCADE)
-    cluster = fields.ForeignKeyField("models.Cluster", related_name="nicks", null=True, on_delete=fields.CASCADE)
+    chat = fields.ForeignKeyField("models.Chat", related_name="nicks", on_delete=fields.CASCADE)
     nick = fields.CharField(max_length=128)
     created_by = fields.ForeignKeyField("models.User", related_name="created_nicks", null=True, on_delete=fields.SET_NULL)
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
         table = "nicks"
-        unique_together = (("user_id", "cluster_id"),)
+        unique_together = (("user_id", "chat_id"),)
 
 
 class InviteLink(Model):

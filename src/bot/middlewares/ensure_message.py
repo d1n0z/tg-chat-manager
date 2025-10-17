@@ -12,10 +12,13 @@ class EnsureMessageMiddleware(BaseMiddleware):
         event: Union[Message, CallbackQuery],
         data: dict[str, Any],
     ) -> Any:
+        _message = None
         if isinstance(event, CallbackQuery):
-            if not event.message or isinstance(event.message, InaccessibleMessage):
+            if not event.message or isinstance(event.message, InaccessibleMessage) or not event.bot:
                 raise CancelHandler()
-        elif isinstance(event, Message):
-            if not event.bot or not event.from_user:
+            _message = event.message
+        if isinstance(event, Message) or _message:
+            _to_check = _message or event
+            if not _to_check.bot or not _to_check.from_user:
                 raise CancelHandler()
         return await handler(event, data)

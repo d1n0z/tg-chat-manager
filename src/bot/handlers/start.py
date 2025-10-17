@@ -8,7 +8,7 @@ from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 
-from src.bot import keyboard
+from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
 from src.core import enums, managers
 
@@ -31,7 +31,7 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     await answer_to(
         message_or_callback_querry,
         text="Добро пожаловать.",
-        reply_markup=keyboard.start(),
+        reply_markup=keyboards.start(),
     )
 
 
@@ -44,21 +44,21 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 Модератор: /clear, /gbynick, /gnick, /nlist, /staff.\n
 Старший модератор: /mute, /unmute, /pin, /unpin, /setrole, /removerole, /snick, /rnick.\n
 Администратор: /kick, /gkick, /gban, /gunban, /unban, /words, /news, /cluster, /setwelcome, /getwelcome, /resetwelcome.""",
-        reply_markup=keyboard.help(),
+        reply_markup=keyboards.help(),
     )
 
 
 @router.callback_query(F.data == "all_chats")
-@router.callback_query(keyboard.ChatsPaginate.filter())
+@router.callback_query(callbackdata.ChatsPaginate.filter())
 async def all_chats(
-    query: CallbackQuery, callback_data: keyboard.ChatsPaginate | None = None
+    query: CallbackQuery, callback_data: callbackdata.ChatsPaginate | None = None
 ):
-    chat_ids = await managers.user_roles.get_user_chats(
+    tg_chat_ids = await managers.user_roles.get_user_chats(
         query.from_user.id, enums.Role.moderator
     )
     chat_names = [
-        (cid, await managers.chats.get(cid, "title") or f"Chat {cid}")
-        for cid in chat_ids
+        (tg_cid, await managers.chats.get(tg_cid, "title") or f"Chat {tg_cid}")
+        for tg_cid in tg_chat_ids
     ]
 
     page = callback_data.page if callback_data else 0
@@ -68,21 +68,20 @@ async def all_chats(
 
     await query.message.edit_text(
         text="Выберите чат:",
-        reply_markup=keyboard.chats_paginate(page_chats, page, total_pages),
+        reply_markup=keyboards.chats_paginate(page_chats, page, total_pages),
     )
 
 
-@router.callback_query(keyboard.ChatSelect.filter())
-async def chat_selected(query: CallbackQuery, callback_data: keyboard.ChatSelect):
+@router.callback_query(callbackdata.ChatSelect.filter())
+async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSelect):
     tg_chat_id = int(callback_data.chat_id)
-    chat_id, title = await managers.chats.get(tg_chat_id, ("id", "title"))
-    user_id = await managers.users.get(query.from_user.id, "id")
+    title = await managers.chats.get(tg_chat_id, "title")
 
-    existing_invites = await managers.invite_links.get_chat_invites(chat_id)
+    existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
     invite_url = None
     for invite in existing_invites:
         if (
-            invite.creator_id == user_id
+            invite.creator_tg_id == query.from_user.id
             and invite.is_active
             and invite.used_count < invite.max_uses
         ):
@@ -96,24 +95,23 @@ async def chat_selected(query: CallbackQuery, callback_data: keyboard.ChatSelect
 
     await query.message.edit_text(
         text=text,
-        reply_markup=keyboard.chat_card(tg_chat_id, invite_url),
+        reply_markup=keyboards.chat_card(tg_chat_id, invite_url),
     )
 
 
-@router.callback_query(keyboard.GenerateInvite.filter())
-async def generate_invite(query: CallbackQuery, callback_data: keyboard.GenerateInvite):
+@router.callback_query(callbackdata.GenerateInvite.filter())
+async def generate_invite(query: CallbackQuery, callback_data: callbackdata.GenerateInvite):
     tg_chat_id = int(callback_data.chat_id)
 
     bot = query.bot
     if not bot:
         return
     try:
-        chat_id, title = await managers.chats.get(tg_chat_id, ("id", "title"))
-        user_id = await managers.users.get(query.from_user.id, "id")
+        title = await managers.chats.get(tg_chat_id, "title")
 
-        existing_invites = await managers.invite_links.get_chat_invites(chat_id)
+        existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
         for invite in existing_invites:
-            if invite.creator_id == user_id:
+            if invite.creator_tg_id == query.from_user.id:
                 await managers.invite_links.remove_invite(invite.token)
 
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -130,8 +128,8 @@ async def generate_invite(query: CallbackQuery, callback_data: keyboard.Generate
 
         await managers.invite_links.add_invite(
             token=token,
-            chat_id=chat_id,
-            creator_id=user_id,
+            tg_chat_id=tg_chat_id,
+            creator_tg_id=query.from_user.id,
             max_uses=1,
             expires_at=expires_at,
             single_use=True,
@@ -146,7 +144,7 @@ ID: {tg_chat_id}\n
 
         await query.message.edit_text(
             text=text,
-            reply_markup=keyboard.chat_card(tg_chat_id, invite_url),
+            reply_markup=keyboards.chat_card(tg_chat_id, invite_url),
         )
     except Exception as e:
         if "message is not modified" in str(e):

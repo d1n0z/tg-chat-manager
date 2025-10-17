@@ -12,35 +12,31 @@ from src.core.models import InviteUsage, InviteLink, User
 @dataclass
 class _CachedInviteUsage(BaseCachedModel):
     id: Optional[int]
-    invite_id: int
-    user_id: int
+    invite_token: str
+    tg_user_id: int
     used_at: Any
 
 
-CacheKey: TypeAlias = Tuple[int, int]  # (invite_id, user_id)
+CacheKey: TypeAlias = Tuple[str, int]  # (invite_token, tg_user_id)
 Cache: TypeAlias = Dict[CacheKey, _CachedInviteUsage]
 
 
-def _make_cache_key(invite_id: int, user_id: int) -> CacheKey:
-    return (invite_id, user_id)
+def _make_cache_key(invite_token: str, tg_user_id: int) -> CacheKey:
+    return (invite_token, tg_user_id)
 
 
 class InviteUsageRepository(BaseRepository):
-    async def ensure_invite(self, invite_id: int) -> InviteLink:
-        return await InviteLink.get(id=invite_id)
-
-    async def ensure_user(self, user_id: int) -> User:
-        return await User.get(id=user_id)
-
     async def ensure_record(
         self,
-        invite_id: int,
-        user_id: int,
+        invite_token: str,
+        tg_user_id: int,
         used_at: Optional[Any] = None
     ) -> Tuple[InviteUsage, bool]:
         defaults = {"used_at": used_at or datetime.now(timezone.utc)}
-        invite = await self.ensure_invite(invite_id)
-        user = await self.ensure_user(user_id)
+        invite = await InviteLink.filter(token=invite_token).first()
+        if not invite:
+            raise ValueError(f"Invite with token {invite_token} not found")
+        user, _ = await User.get_or_create(tg_user_id=tg_user_id)
         obj, created = await InviteUsage.get_or_create(
             invite_id=invite.id,
             user_id=user.id,
@@ -48,8 +44,11 @@ class InviteUsageRepository(BaseRepository):
         )
         return obj, created
 
-    async def delete_record(self, invite_id: int, user_id: int):
-        await InviteUsage.filter(invite_id=invite_id, user_id=user_id).delete()
+    async def delete_record(self, invite_token: str, tg_user_id: int):
+        invite = await InviteLink.filter(token=invite_token).first()
+        user = await User.filter(tg_user_id=tg_user_id).first()
+        if invite and user:
+            await InviteUsage.filter(invite_id=invite.id, user_id=user.id).delete()
 
     async def all(self) -> List[InviteUsage]:
         return await InviteUsage.all().prefetch_related("invite", "user")
@@ -66,30 +65,14 @@ class InviteUsageCache(BaseCacheManager):
         rows = await self.repo.all()
         async with self._lock:
             for row in rows:
-                key = _make_cache_key(row.invite_id, row.user_id)  # type: ignore
+                key = _make_cache_key(row.invite.token, row.user.tg_user_id)  # type: ignore
                 self._cache[key] = _CachedInviteUsage(
                     id=row.id,
-                    invite_id=row.invite_id,  # type: ignore
-                    user_id=row.user_id,  # type: ignore
+                    invite_token=row.invite.token,  # type: ignore
+                    tg_user_id=row.user.tg_user_id,  # type: ignore
                     used_at=row.used_at,
                 )
         await super().initialize()
-
-    async def _ensure_cached(self, invite_id: int, user_id: int, used_at: Optional[Any] = None) -> bool:
-        key = _make_cache_key(invite_id, user_id)
-        async with self._lock:
-            if key in self._cache:
-                return False
-
-        model, created = await self.repo.ensure_record(invite_id, user_id, used_at)
-        async with self._lock:
-            self._cache[key] = _CachedInviteUsage(
-                id=model.id,
-                invite_id=model.invite_id,  # type: ignore
-                user_id=model.user_id,  # type: ignore
-                used_at=model.used_at,
-            )
-        return created
 
     @overload
     async def get(self, cache_key: CacheKey, fields=None) -> Any: ...
@@ -108,30 +91,41 @@ class InviteUsageCache(BaseCacheManager):
         else:
             return tuple([getattr(obj, f, None) for f in fields]) if obj else tuple([None for _ in fields])
 
-    async def add_usage(self, invite_id: int, user_id: int, used_at: Optional[Any] = None):
-        created = await self._ensure_cached(invite_id, user_id, used_at)
-        key = _make_cache_key(invite_id, user_id)
+    async def add_usage(self, invite_token: str, tg_user_id: int, used_at: Optional[Any] = None):
+        key = _make_cache_key(invite_token, tg_user_id)
         async with self._lock:
-            r = self._cache[key]
-            r.used_at = used_at
+            if key in self._cache:
+                r = self._cache[key]
+                r.used_at = used_at
+                self._dirty.add(key)
+                return False
+        
+        model, created = await self.repo.ensure_record(invite_token, tg_user_id, used_at)
+        async with self._lock:
+            self._cache[key] = _CachedInviteUsage(
+                id=model.id,
+                invite_token=invite_token,
+                tg_user_id=tg_user_id,
+                used_at=model.used_at,
+            )
             self._dirty.add(key)
         return created
 
-    async def remove_usage(self, invite_id: int, user_id: int):
-        key = _make_cache_key(invite_id, user_id)
+    async def remove_usage(self, invite_token: str, tg_user_id: int):
+        key = _make_cache_key(invite_token, tg_user_id)
         async with self._lock:
             if key in self._cache:
                 self._dirty.discard(key)
                 del self._cache[key]
-        await self.repo.delete_record(invite_id, user_id)
+        await self.repo.delete_record(invite_token, tg_user_id)
 
-    async def get_invite_usages(self, invite_id: int) -> List[_CachedInviteUsage]:
+    async def get_invite_usages(self, invite_token: str) -> List[_CachedInviteUsage]:
         async with self._lock:
-            return [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == invite_id]
+            return [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == invite_token]
 
-    async def get_user_usages(self, user_id: int) -> List[_CachedInviteUsage]:
+    async def get_user_usages(self, tg_user_id: int) -> List[_CachedInviteUsage]:
         async with self._lock:
-            return [copy.deepcopy(v) for k, v in self._cache.items() if k[1] == user_id]
+            return [copy.deepcopy(v) for k, v in self._cache.items() if k[1] == tg_user_id]
 
     async def sync(self, batch_size: int = 1000):
         async with self._lock:
@@ -143,16 +137,24 @@ class InviteUsageCache(BaseCacheManager):
         if not payloads:
             return
 
-        items = list(payloads.items())
         try:
-            invite_ids = {key[0] for key in payloads.keys()}
-            existing_rows = await InviteUsage.filter(invite_id__in=list(invite_ids)).prefetch_related("invite", "user")
-            existing_map = {(row.invite_id, row.user_id): row for row in existing_rows}  # type: ignore
+            invite_tokens = {k[0] for k in payloads.keys()}
+            tg_user_ids = {k[1] for k in payloads.keys()}
+            
+            invites = await InviteLink.filter(token__in=list(invite_tokens))
+            users = await User.filter(tg_user_id__in=list(tg_user_ids))
+            invite_map = {i.token: i.id for i in invites}
+            user_map = {u.tg_user_id: u.id for u in users}
+            
+            invite_db_ids = [invite_map[k[0]] for k in payloads.keys() if k[0] in invite_map and k[1] in user_map]
+            existing_rows = await InviteUsage.filter(invite_id__in=invite_db_ids).prefetch_related("invite", "user")
+            existing_map = {(row.invite.token, row.user.tg_user_id): row for row in existing_rows}  # type: ignore
 
             to_update = []
             to_create = []
 
-            for key, cached in items:
+            for key, cached in payloads.items():
+                invite_token, tg_user_id = key
                 if key in existing_map:
                     row = existing_map[key]
                     dirty = False
@@ -162,11 +164,11 @@ class InviteUsageCache(BaseCacheManager):
                     if dirty:
                         to_update.append(row)
                 else:
-                    if cached.invite_id is None or cached.user_id is None:
+                    if invite_token not in invite_map or tg_user_id not in user_map:
                         continue
                     to_create.append(InviteUsage(
-                        invite_id=cached.invite_id,
-                        user_id=cached.user_id,
+                        invite_id=invite_map[invite_token],
+                        user_id=user_map[tg_user_id],
                         used_at=cached.used_at,
                     ))
 

@@ -28,8 +28,8 @@ from src.core.models import Chat, InviteLink, User
 class _CachedInviteLink(BaseCachedModel):
     id: Optional[int]
     token: str
-    chat_id: int
-    creator_id: Optional[int]
+    tg_chat_id: int
+    creator_tg_id: Optional[int]
     max_uses: int
     used_count: int
     expires_at: Optional[datetime]
@@ -43,26 +43,22 @@ Cache: TypeAlias = Dict[CacheKey, _CachedInviteLink]
 
 
 class InviteLinkRepository(BaseRepository):
-    async def ensure_chat(self, chat_id: int) -> Tuple[Chat, bool]:
-        return await Chat.get_or_create(id=chat_id, defaults={})
-
-    async def ensure_creator(self, user_id: int) -> Tuple[User, bool]:
-        return await User.get_or_create(id=user_id, defaults={})
-
     async def ensure_record(
         self,
         token: str,
-        chat_id: int,
-        creator_id: Optional[int] = None,
+        tg_chat_id: int,
+        creator_tg_id: Optional[int] = None,
         max_uses: int = 1,
         expires_at: Optional[datetime] = None,
         single_use: bool = True,
     ) -> Tuple[InviteLink, bool]:
-        await self.ensure_chat(chat_id)
-        if creator_id:
-            await self.ensure_creator(creator_id)
+        chat, _ = await Chat.get_or_create(tg_chat_id=tg_chat_id)
+        creator_id = None
+        if creator_tg_id:
+            creator, _ = await User.get_or_create(tg_user_id=creator_tg_id)
+            creator_id = creator.id
         defaults = {
-            "chat_id": chat_id,
+            "chat_id": chat.id,
             "creator_id": creator_id,
             "max_uses": max_uses,
             "expires_at": expires_at,
@@ -92,8 +88,8 @@ class InviteLinkCache(BaseCacheManager):
                 self._cache[row.token] = _CachedInviteLink(
                     id=row.id,
                     token=row.token,
-                    chat_id=row.chat_id,  # type: ignore
-                    creator_id=row.creator_id,  # type: ignore
+                    tg_chat_id=row.chat.tg_chat_id,  # type: ignore
+                    creator_tg_id=row.creator.tg_user_id if row.creator else None,  # type: ignore
                     max_uses=row.max_uses,
                     used_count=row.used_count,
                     expires_at=row.expires_at,
@@ -102,37 +98,6 @@ class InviteLinkCache(BaseCacheManager):
                     created_at=row.created_at,
                 )
         await super().initialize()
-
-    async def _ensure_cached(
-        self,
-        token: str,
-        chat_id: int,
-        creator_id: Optional[int] = None,
-        max_uses: int = 1,
-        expires_at: Optional[datetime] = None,
-        single_use: bool = True,
-    ) -> bool:
-        async with self._lock:
-            if token in self._cache:
-                return False
-
-        model, created = await self.repo.ensure_record(
-            token, chat_id, creator_id, max_uses, expires_at, single_use
-        )
-        async with self._lock:
-            self._cache[token] = _CachedInviteLink(
-                id=model.id,
-                token=model.token,
-                chat_id=model.chat_id,  # type: ignore
-                creator_id=model.creator_id,  # type: ignore
-                max_uses=model.max_uses,
-                used_count=model.used_count,
-                expires_at=model.expires_at,
-                single_use=model.single_use,
-                is_active=model.is_active,
-                created_at=model.created_at,
-            )
-        return created
 
     @overload
     async def get(self, token: str, fields=None) -> Any: ...
@@ -158,16 +123,32 @@ class InviteLinkCache(BaseCacheManager):
     async def add_invite(
         self,
         token: str,
-        chat_id: int,
-        creator_id: Optional[int] = None,
+        tg_chat_id: int,
+        creator_tg_id: Optional[int] = None,
         max_uses: int = 1,
         expires_at: Optional[datetime] = None,
         single_use: bool = True,
     ):
-        await self._ensure_cached(
-            token, chat_id, creator_id, max_uses, expires_at, single_use
+        async with self._lock:
+            if token in self._cache:
+                return
+        
+        model, _ = await self.repo.ensure_record(
+            token, tg_chat_id, creator_tg_id, max_uses, expires_at, single_use
         )
         async with self._lock:
+            self._cache[token] = _CachedInviteLink(
+                id=model.id,
+                token=model.token,
+                tg_chat_id=tg_chat_id,
+                creator_tg_id=creator_tg_id,
+                max_uses=model.max_uses,
+                used_count=model.used_count,
+                expires_at=model.expires_at,
+                single_use=model.single_use,
+                is_active=model.is_active,
+                created_at=model.created_at,
+            )
             self._dirty.add(token)
 
     async def remove_invite(self, token: str):
@@ -188,10 +169,10 @@ class InviteLinkCache(BaseCacheManager):
             self._dirty.add(token)
             return True
 
-    async def get_chat_invites(self, chat_id: int) -> List[_CachedInviteLink]:
+    async def get_chat_invites(self, tg_chat_id: int) -> List[_CachedInviteLink]:
         async with self._lock:
             return [
-                copy.deepcopy(v) for v in self._cache.values() if v.chat_id == chat_id
+                copy.deepcopy(v) for v in self._cache.values() if v.tg_chat_id == tg_chat_id
             ]
 
     async def is_valid(self, token: str) -> bool:
@@ -222,6 +203,10 @@ class InviteLinkCache(BaseCacheManager):
             return
 
         try:
+            tg_chat_ids = {v.tg_chat_id for v in payloads.values()}
+            chats = await Chat.filter(tg_chat_id__in=list(tg_chat_ids))
+            chat_map = {c.tg_chat_id: c.id for c in chats}
+            
             tokens = list(payloads.keys())
             existing_rows = await InviteLink.filter(token__in=tokens).prefetch_related(
                 "chat", "creator"
@@ -242,11 +227,18 @@ class InviteLinkCache(BaseCacheManager):
                     if dirty:
                         to_update.append(row)
                 else:
+                    if cached.tg_chat_id not in chat_map:
+                        continue
+                    creator_id = None
+                    if cached.creator_tg_id:
+                        creator = await User.filter(tg_user_id=cached.creator_tg_id).first()
+                        if creator:
+                            creator_id = creator.id
                     to_create.append(
                         InviteLink(
                             token=cached.token,
-                            chat_id=cached.chat_id,
-                            creator_id=cached.creator_id,
+                            chat_id=chat_map[cached.tg_chat_id],
+                            creator_id=creator_id,
                             max_uses=cached.max_uses,
                             used_count=cached.used_count,
                             expires_at=cached.expires_at,

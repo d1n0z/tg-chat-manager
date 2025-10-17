@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, TypeAlias
 from tortoise.transactions import in_transaction
 from src.core.managers.base import BaseCachedModel, BaseCacheManager, BaseManager, BaseRepository
-from src.core.models import WelcomeMessage
+from src.core.models import User, WelcomeMessage
 
 
 @dataclass
@@ -11,7 +11,7 @@ class _CachedWelcome(BaseCachedModel):
     id: Optional[int]
     cluster_id: Optional[int]
     text: str
-    created_by_id: Optional[int]
+    created_by_tg_id: Optional[int]
     created_at: Any
     is_default: bool
 
@@ -21,13 +21,19 @@ Cache: TypeAlias = Dict[Optional[int], _CachedWelcome]
 
 class WelcomeRepository(BaseRepository):
     async def all(self) -> List[WelcomeMessage]:
-        return await WelcomeMessage.all()
+        return await WelcomeMessage.all().prefetch_related("created_by")
 
     async def delete_record(self, cluster_id: Optional[int]):
         await WelcomeMessage.filter(cluster_id=cluster_id).delete()
 
     async def ensure_record(self, cluster_id: Optional[int], **fields) -> Tuple[WelcomeMessage, bool]:
-        return await WelcomeMessage.get_or_create(cluster_id=cluster_id, defaults=fields)
+        created_by_id = None
+        if "created_by_tg_id" in fields:
+            created_by_tg_id = fields.pop("created_by_tg_id")
+            if created_by_tg_id:
+                created_by, _ = await User.get_or_create(tg_user_id=created_by_tg_id)
+                created_by_id = created_by.id
+        return await WelcomeMessage.get_or_create(cluster_id=cluster_id, defaults={**fields, "created_by_id": created_by_id})
 
 
 class WelcomeCache(BaseCacheManager):
@@ -45,20 +51,20 @@ class WelcomeCache(BaseCacheManager):
                     id=r.id,
                     cluster_id=r.cluster_id,  # type: ignore
                     text=r.text,
-                    created_by_id=r.created_by_id,  # type: ignore
+                    created_by_tg_id=r.created_by.tg_user_id if r.created_by else None,  # type: ignore
                     created_at=r.created_at,
                     is_default=r.is_default,
                 )
         await super().initialize()
 
-    async def set_message(self, cluster_id: Optional[int], text: str, created_by_id: Optional[int], is_default=False):
-        model, _ = await self.repo.ensure_record(cluster_id, text=text, created_by_id=created_by_id, is_default=is_default)
+    async def set_message(self, cluster_id: Optional[int], text: str, created_by_tg_id: Optional[int], is_default=False):
+        model, _ = await self.repo.ensure_record(cluster_id, text=text, created_by_tg_id=created_by_tg_id, is_default=is_default)
         async with self._lock:
             self._cache[cluster_id] = _CachedWelcome(
                 id=model.id,
                 cluster_id=cluster_id,
                 text=text,
-                created_by_id=created_by_id,
+                created_by_tg_id=created_by_tg_id,
                 created_at=model.created_at,
                 is_default=is_default,
             )
@@ -81,16 +87,26 @@ class WelcomeCache(BaseCacheManager):
         if not payloads:
             return
 
-        async with in_transaction():
-            for cid, v in payloads.items():
-                await WelcomeMessage.update_or_create(
-                    defaults=dict(
-                        text=v.text,
-                        created_by_id=v.created_by_id,
-                        is_default=v.is_default,
-                    ),
-                    cluster_id=cid,
-                )
+        try:
+            async with in_transaction():
+                for cid, v in payloads.items():
+                    created_by_id = None
+                    if v.created_by_tg_id:
+                        created_by = await User.filter(tg_user_id=v.created_by_tg_id).first()
+                        if created_by:
+                            created_by_id = created_by.id
+                    await WelcomeMessage.update_or_create(
+                        defaults=dict(
+                            text=v.text,
+                            created_by_id=created_by_id,
+                            is_default=v.is_default,
+                        ),
+                        cluster_id=cid,
+                    )
+        except Exception:
+            from loguru import logger
+            logger.exception("WelcomeMessage sync failed")
+            return
 
         async with self._lock:
             self._dirty -= dirty_snapshot

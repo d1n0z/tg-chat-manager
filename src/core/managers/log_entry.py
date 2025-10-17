@@ -2,17 +2,17 @@ import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, TypeAlias
 from src.core.managers.base import BaseCachedModel, BaseCacheManager, BaseManager, BaseRepository
-from src.core.models import LogEntry
+from src.core.models import Chat, LogEntry, User
 
 
 @dataclass
 class _CachedLogEntry(BaseCachedModel):
     id: Optional[int]
     cluster_id: Optional[int]
-    chat_id: Optional[int]
+    tg_chat_id: Optional[int]
     action: str
-    target_user_id: Optional[int]
-    actor_user_id: Optional[int]
+    target_tg_user_id: Optional[int]
+    actor_tg_user_id: Optional[int]
     reason: Optional[str]
     meta: Optional[dict]
     created_at: Any
@@ -26,7 +26,25 @@ class LogEntryRepository(BaseRepository):
         return await LogEntry.all().prefetch_related("cluster", "chat", "target_user", "actor_user")
 
     async def ensure_record(self, **fields) -> LogEntry:
-        return await LogEntry.create(**fields)
+        chat_id = None
+        if "tg_chat_id" in fields:
+            tg_chat_id = fields.pop("tg_chat_id")
+            if tg_chat_id:
+                chat, _ = await Chat.get_or_create(tg_chat_id=tg_chat_id)
+                chat_id = chat.id
+        target_user_id = None
+        if "target_tg_user_id" in fields:
+            target_tg_user_id = fields.pop("target_tg_user_id")
+            if target_tg_user_id:
+                target_user, _ = await User.get_or_create(tg_user_id=target_tg_user_id)
+                target_user_id = target_user.id
+        actor_user_id = None
+        if "actor_tg_user_id" in fields:
+            actor_tg_user_id = fields.pop("actor_tg_user_id")
+            if actor_tg_user_id:
+                actor_user, _ = await User.get_or_create(tg_user_id=actor_tg_user_id)
+                actor_user_id = actor_user.id
+        return await LogEntry.create(chat_id=chat_id, target_user_id=target_user_id, actor_user_id=actor_user_id, **fields)
 
 
 class LogEntryCache(BaseCacheManager):
@@ -43,10 +61,10 @@ class LogEntryCache(BaseCacheManager):
                 self._cache[r.id] = _CachedLogEntry(
                     id=r.id,
                     cluster_id=r.cluster_id,  # type: ignore
-                    chat_id=r.chat_id,  # type: ignore
+                    tg_chat_id=r.chat.tg_chat_id if r.chat else None,  # type: ignore
                     action=r.action,
-                    target_user_id=r.target_user_id,  # type: ignore
-                    actor_user_id=r.actor_user_id,  # type: ignore
+                    target_tg_user_id=r.target_user.tg_user_id if r.target_user else None,  # type: ignore
+                    actor_tg_user_id=r.actor_user.tg_user_id if r.actor_user else None,  # type: ignore
                     reason=r.reason,
                     meta=r.meta,
                     created_at=r.created_at,
@@ -59,10 +77,10 @@ class LogEntryCache(BaseCacheManager):
             self._cache[model.id] = _CachedLogEntry(
                 id=model.id,
                 cluster_id=model.cluster_id,  # type: ignore
-                chat_id=model.chat_id,  # type: ignore
+                tg_chat_id=fields.get("tg_chat_id"),
                 action=model.action,
-                target_user_id=model.target_user_id,  # type: ignore
-                actor_user_id=model.actor_user_id,  # type: ignore
+                target_tg_user_id=fields.get("target_tg_user_id"),
+                actor_tg_user_id=fields.get("actor_tg_user_id"),
                 reason=model.reason,
                 meta=model.meta,
                 created_at=model.created_at,
@@ -74,7 +92,6 @@ class LogEntryCache(BaseCacheManager):
             return [copy.deepcopy(v) for v in self._cache.values() if v.cluster_id == cluster_id]
 
     async def sync(self, batch_size: int = 500):
-        # Логи обычно не редактируются, sync можно просто очищать _dirty
         async with self._lock:
             self._dirty.clear()
 

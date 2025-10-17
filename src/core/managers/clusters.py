@@ -55,6 +55,9 @@ class ClusterRepository(BaseRepository):
     async def get_record(self, cluster_id: int) -> Optional[Cluster]:
         return await Cluster.filter(id=cluster_id).first()
 
+    async def get_global(self) -> Cluster:
+        return await Cluster.get(is_global=True)
+
     async def delete_record(self, cluster_id: int):
         await Cluster.filter(id=cluster_id).delete()
 
@@ -79,7 +82,7 @@ class ClusterCache(BaseCacheManager):
                     slug=cluster.slug,
                     is_global=cluster.is_global,
                     created_at=cluster.created_at,
-                    chat_ids={chat.id for chat in cluster.chats},
+                    chat_ids={chat.tg_chat_id for chat in cluster.chats},
                 )
         await super().initialize()
 
@@ -87,7 +90,7 @@ class ClusterCache(BaseCacheManager):
         async with self._lock:
             return self._cache.get(cluster_id)
 
-    async def add_chat(self, cluster_id: int, chat_id: int):
+    async def add_chat(self, cluster_id: int, tg_chat_id: int):
         async with self._lock:
             if cluster_id not in self._cache:
                 cluster = await self.repo.get_record(cluster_id)
@@ -101,14 +104,14 @@ class ClusterCache(BaseCacheManager):
                     created_at=cluster.created_at,
                     chat_ids=set(),
                 )
-            self._cache[cluster_id].chat_ids.add(chat_id)
+            self._cache[cluster_id].chat_ids.add(tg_chat_id)
             self._dirty.add(cluster_id)
 
-    async def remove_chat(self, cluster_id: int, chat_id: int):
+    async def remove_chat(self, cluster_id: int, tg_chat_id: int):
         async with self._lock:
             cluster = self._cache.get(cluster_id)
-            if cluster and chat_id in cluster.chat_ids:
-                cluster.chat_ids.remove(chat_id)
+            if cluster and tg_chat_id in cluster.chat_ids:
+                cluster.chat_ids.remove(tg_chat_id)
                 self._dirty.add(cluster_id)
 
     async def add_cluster(self, name: str, **defaults) -> Cluster:
@@ -131,7 +134,6 @@ class ClusterCache(BaseCacheManager):
             self._dirty.discard(cluster_id)
 
     async def sync(self, batch_size: int = 1000):
-        """Синхронизация dirty-кэша с базой. Учитывает добавление/удаление чатов."""
         async with self._lock:
             if not self._dirty:
                 return
@@ -146,22 +148,22 @@ class ClusterCache(BaseCacheManager):
         async with in_transaction() as conn:
             for cluster_id, cached in cache_snapshot.items():
                 db_chats = await Chat.filter(cluster_id=cluster_id).using_db(conn)
-                db_chat_ids = {chat.id for chat in db_chats}
+                db_tg_chat_ids = {chat.tg_chat_id for chat in db_chats}
 
-                to_add = cached.chat_ids - db_chat_ids
-                to_remove = db_chat_ids - cached.chat_ids
+                to_add = cached.chat_ids - db_tg_chat_ids
+                to_remove = db_tg_chat_ids - cached.chat_ids
 
                 add_updated = 0
 
                 if to_add:
                     add_updated = (
-                        await Chat.filter(id__in=to_add)
+                        await Chat.filter(tg_chat_id__in=to_add)
                         .using_db(conn)
                         .update(cluster_id=cluster_id)
                     )
                 if to_remove:
                     await (
-                        Chat.filter(id__in=to_remove)
+                        Chat.filter(tg_chat_id__in=to_remove)
                         .using_db(conn)
                         .update(cluster_id=None)
                     )

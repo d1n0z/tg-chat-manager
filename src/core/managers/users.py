@@ -39,6 +39,7 @@ class _CachedUser(BaseCachedModel):
 
 CacheKey: TypeAlias = int  # tg_user_id
 Cache: TypeAlias = Dict[CacheKey, _CachedUser]
+DbIdIndex: TypeAlias = Dict[int, int]  # db_id -> tg_user_id
 
 
 DEFAULT_USER = {
@@ -85,6 +86,7 @@ class UserCache(BaseCacheManager):
         super().__init__(lock)
         self.repo = repo
         self._cache: Cache = cache
+        self._db_id_index: DbIdIndex = {}
         self._dirty: Set[CacheKey] = set()
 
     async def initialize(self):
@@ -104,6 +106,8 @@ class UserCache(BaseCacheManager):
                     created_at=row.created_at,
                     last_seen=row.last_seen,
                 )
+                if row.id:
+                    self._db_id_index[row.id] = row.tg_user_id
         await super().initialize()
 
     async def _ensure_cached(
@@ -128,6 +132,8 @@ class UserCache(BaseCacheManager):
                 created_at=model.created_at,
                 last_seen=model.last_seen,
             )
+            if model.id:
+                self._db_id_index[model.id] = model.tg_user_id
         return created
 
     @overload
@@ -170,6 +176,9 @@ class UserCache(BaseCacheManager):
     async def remove(self, cache_key: CacheKey):
         async with self._lock:
             if cache_key in self._cache:
+                cached = self._cache[cache_key]
+                if cached.id:
+                    self._db_id_index.pop(cached.id, None)
                 self._dirty.discard(cache_key)
                 del self._cache[cache_key]
         await self.repo.delete_record_by_tg(cache_key)
@@ -285,6 +294,8 @@ class UserManager(BaseManager):
         if first is None and last is None:
             return None
         return (" ".join([p for p in (first, last) if p])).strip()
+    
+
 
     async def get_by_username(self, tg_username: str) -> Optional[_CachedUser]:
         async with self._lock:

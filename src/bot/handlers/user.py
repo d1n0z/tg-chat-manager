@@ -26,7 +26,7 @@ async def get_user_id(message: Message, command: CommandObject):
                 f"ID пользователя @{message.from_user.username}: <code>{message.from_user.id}</code>"
             )
             return
-        await message.answer("Использование: /id @username или упомяните пользователя")
+        await message.answer("Использование: /id @username или упомяните пользователя.")
         return
 
     username = command.args.lstrip("@")
@@ -39,7 +39,7 @@ async def get_user_id(message: Message, command: CommandObject):
             user = user[0]
         await message.answer(f"ID пользователя @{username}: <code>{user.id}</code>")
     except UsernameNotOccupied:
-        await message.answer(f"Пользователь @{username} не найден")
+        await message.answer(f"Пользователь @{username} не найден.")
     except Exception:
         loguru.logger.exception("user.id handler exception:")
-        await message.answer("Ошибка при получении ID")
+        await message.answer("Ошибка при получении ID.")

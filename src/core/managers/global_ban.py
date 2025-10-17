@@ -16,47 +16,52 @@ from src.core.models import Cluster, GlobalBan, User
 @dataclass
 class _CachedGlobalBan(BaseCachedModel):
     id: Optional[int]
-    user_id: int
+    tg_user_id: int
     cluster_id: Optional[int]
     reason: Optional[str]
-    created_by_id: Optional[int]
+    created_by_tg_id: Optional[int]
     created_at: Any
     active: bool
-    lifted_by_id: Optional[int]
+    lifted_by_tg_id: Optional[int]
     lifted_at: Optional[Any]
 
 
-CacheKey: TypeAlias = Tuple[int, Optional[int]]
+CacheKey: TypeAlias = Tuple[int, Optional[int]]  # (tg_user_id, cluster_id)
 Cache: TypeAlias = Dict[CacheKey, _CachedGlobalBan]
 
 
-def _make_cache_key(user_id: int, cluster_id: Optional[int]) -> CacheKey:
-    return (user_id, cluster_id)
+def _make_cache_key(tg_user_id: int, cluster_id: Optional[int]) -> CacheKey:
+    return (tg_user_id, cluster_id)
 
 
 class GlobalBanRepository(BaseRepository):
-    async def ensure_user(self, tg_user_id: int) -> Tuple[User, bool]:
-        return await User.get_or_create(tg_user_id=tg_user_id, defaults={})
-
-    async def ensure_cluster(self, cluster_id: Optional[int]) -> Optional[Cluster]:
-        if cluster_id is None:
-            return None
-        return await Cluster.get(id=cluster_id)
-
     async def ensure_record(
-        self, user_id: int, cluster_id: Optional[int], **fields
+        self, tg_user_id: int, cluster_id: Optional[int], **fields
     ) -> Tuple[GlobalBan, bool]:
-        await self.ensure_user(user_id)
-        await self.ensure_cluster(cluster_id)
+        user, _ = await User.get_or_create(tg_user_id=tg_user_id)
+        created_by_id = None
+        if "created_by_tg_id" in fields:
+            created_by_tg_id = fields.pop("created_by_tg_id")
+            if created_by_tg_id:
+                created_by, _ = await User.get_or_create(tg_user_id=created_by_tg_id)
+                created_by_id = created_by.id
+        lifted_by_id = None
+        if "lifted_by_tg_id" in fields:
+            lifted_by_tg_id = fields.pop("lifted_by_tg_id")
+            if lifted_by_tg_id:
+                lifted_by, _ = await User.get_or_create(tg_user_id=lifted_by_tg_id)
+                lifted_by_id = lifted_by.id
         return await GlobalBan.get_or_create(
-            user_id=user_id, cluster_id=cluster_id, defaults=fields
+            user_id=user.id, cluster_id=cluster_id, defaults={**fields, "created_by_id": created_by_id, "lifted_by_id": lifted_by_id}
         )
 
-    async def delete_record(self, user_id: int, cluster_id: Optional[int]):
-        await GlobalBan.filter(user_id=user_id, cluster_id=cluster_id).delete()
+    async def delete_record(self, tg_user_id: int, cluster_id: Optional[int]):
+        user = await User.filter(tg_user_id=tg_user_id).first()
+        if user:
+            await GlobalBan.filter(user_id=user.id, cluster_id=cluster_id).delete()
 
     async def all(self) -> List[GlobalBan]:
-        return await GlobalBan.all().prefetch_related("user", "cluster")
+        return await GlobalBan.all().prefetch_related("user", "cluster", "created_by", "lifted_by")
 
 
 class GlobalBanCache(BaseCacheManager):
@@ -70,43 +75,52 @@ class GlobalBanCache(BaseCacheManager):
         rows = await self.repo.all()
         async with self._lock:
             for r in rows:
-                key = _make_cache_key(r.user_id, r.cluster_id)  # type: ignore
+                key = _make_cache_key(r.user.tg_user_id, r.cluster_id)  # type: ignore
                 self._cache[key] = _CachedGlobalBan(
                     id=r.id,
-                    user_id=r.user_id,  # type: ignore
+                    tg_user_id=r.user.tg_user_id,  # type: ignore
                     cluster_id=r.cluster_id,  # type: ignore
                     reason=r.reason,
-                    created_by_id=r.created_by_id,  # type: ignore
+                    created_by_tg_id=r.created_by.tg_user_id if r.created_by else None,  # type: ignore
                     created_at=r.created_at,
                     active=r.active,
-                    lifted_by_id=r.lifted_by_id,  # type: ignore
+                    lifted_by_tg_id=r.lifted_by.tg_user_id if r.lifted_by else None,  # type: ignore
                     lifted_at=r.lifted_at,
                 )
         await super().initialize()
 
-    async def add_ban(self, user_id: int, cluster_id: Optional[int], **fields):
-        model, _ = await self.repo.ensure_record(user_id, cluster_id, **fields)
-        key = _make_cache_key(user_id, cluster_id)
+    async def add_ban(self, tg_user_id: int, cluster_id: Optional[int], **fields):
+        key = _make_cache_key(tg_user_id, cluster_id)
+        async with self._lock:
+            if key in self._cache:
+                r = self._cache[key]
+                for k, v in fields.items():
+                    if hasattr(r, k):
+                        setattr(r, k, v)
+                self._dirty.add(key)
+                return
+        
+        model, _ = await self.repo.ensure_record(tg_user_id, cluster_id, **fields)
         async with self._lock:
             self._cache[key] = _CachedGlobalBan(
                 id=model.id,
-                user_id=model.user_id,  # type: ignore
+                tg_user_id=tg_user_id,
                 cluster_id=model.cluster_id,  # type: ignore
                 reason=model.reason,
-                created_by_id=model.created_by_id,  # type: ignore
+                created_by_tg_id=fields.get("created_by_tg_id"),
                 created_at=model.created_at,
                 active=model.active,
-                lifted_by_id=model.lifted_by_id,  # type: ignore
+                lifted_by_tg_id=fields.get("lifted_by_tg_id"),
                 lifted_at=model.lifted_at,
             )
             self._dirty.add(key)
 
-    async def remove_ban(self, user_id: int, cluster_id: Optional[int]):
-        key = _make_cache_key(user_id, cluster_id)
+    async def remove_ban(self, tg_user_id: int, cluster_id: Optional[int]):
+        key = _make_cache_key(tg_user_id, cluster_id)
         async with self._lock:
             self._cache.pop(key, None)
             self._dirty.discard(key)
-        await self.repo.delete_record(user_id, cluster_id)
+        await self.repo.delete_record(tg_user_id, cluster_id)
 
     async def get_cluster_bans(
         self, cluster_id: Optional[int]
@@ -114,16 +128,16 @@ class GlobalBanCache(BaseCacheManager):
         async with self._lock:
             return [
                 copy.deepcopy(v)
-                for (_, cid), v in self._cache.items()
-                if cid == cluster_id
+                for k, v in self._cache.items()
+                if k[1] == cluster_id
             ]
 
-    async def get_user_bans(self, user_id: int) -> List[_CachedGlobalBan]:
+    async def get_user_bans(self, tg_user_id: int) -> List[_CachedGlobalBan]:
         async with self._lock:
             return [
                 copy.deepcopy(v)
-                for (uid, _), v in self._cache.items()
-                if uid == user_id
+                for k, v in self._cache.items()
+                if k[0] == tg_user_id
             ]
 
     async def sync(self, batch_size: int = 1000):
@@ -137,19 +151,41 @@ class GlobalBanCache(BaseCacheManager):
         if not payloads:
             return
 
-        async with in_transaction():
-            for k, v in payloads.items():
-                await GlobalBan.update_or_create(
-                    defaults=dict(
-                        reason=v.reason,
-                        created_by_id=v.created_by_id,
-                        active=v.active,
-                        lifted_by_id=v.lifted_by_id,
-                        lifted_at=v.lifted_at,
-                    ),
-                    user_id=v.user_id,
-                    cluster_id=v.cluster_id,
-                )
+        try:
+            tg_user_ids = {k[0] for k in payloads.keys()}
+            users = await User.filter(tg_user_id__in=list(tg_user_ids))
+            user_map = {u.tg_user_id: u.id for u in users}
+            
+            async with in_transaction():
+                for k, v in payloads.items():
+                    tg_user_id, cluster_id = k
+                    if tg_user_id not in user_map:
+                        continue
+                    created_by_id = None
+                    if v.created_by_tg_id:
+                        cb_user = await User.filter(tg_user_id=v.created_by_tg_id).first()
+                        if cb_user:
+                            created_by_id = cb_user.id
+                    lifted_by_id = None
+                    if v.lifted_by_tg_id:
+                        lb_user = await User.filter(tg_user_id=v.lifted_by_tg_id).first()
+                        if lb_user:
+                            lifted_by_id = lb_user.id
+                    await GlobalBan.update_or_create(
+                        defaults=dict(
+                            reason=v.reason,
+                            created_by_id=created_by_id,
+                            active=v.active,
+                            lifted_by_id=lifted_by_id,
+                            lifted_at=v.lifted_at,
+                        ),
+                        user_id=user_map[tg_user_id],
+                        cluster_id=cluster_id,
+                    )
+        except Exception:
+            from loguru import logger
+            logger.exception("GlobalBan sync failed")
+            return
 
         async with self._lock:
             self._dirty -= dirty_snapshot

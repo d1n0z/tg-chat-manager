@@ -21,56 +21,67 @@ from src.core.managers.base import (
     BaseManager,
     BaseRepository,
 )
-from src.core.models import Cluster, Nick, User
+from src.core.models import Chat, Nick, User
 
 
 @dataclass
 class _CachedNick(BaseCachedModel):
     id: Optional[int]
-    user_id: int
-    cluster_id: Optional[int]
+    tg_user_id: int
+    tg_chat_id: int
     nick: str
-    created_by_id: Optional[int]
+    created_by_tg_id: Optional[int]
     created_at: Any
 
 
-CacheKey: TypeAlias = Tuple[int, Optional[int]]  # (user_id, cluster_id)
+CacheKey: TypeAlias = Tuple[int, int]  # (tg_user_id, tg_chat_id)
 Cache: TypeAlias = Dict[CacheKey, _CachedNick]
 
 
-def _make_cache_key(user_id: int, cluster_id: Optional[int]) -> CacheKey:
-    return (user_id, cluster_id)
+def _make_cache_key(tg_user_id: int, tg_chat_id: int) -> CacheKey:
+    return (tg_user_id, tg_chat_id)
 
 
 class NickRepository(BaseRepository):
-    async def ensure_user(self, user_id: int) -> User:
-        return await User.get(id=user_id)
-
-    async def ensure_cluster(self, cluster_id: Optional[int]) -> Optional[Cluster]:
-        if cluster_id is None:
-            return None
-        return await Cluster.get(id=cluster_id)
-
     async def ensure_record(
         self,
-        user_id: int,
-        cluster_id: Optional[int],
+        tg_user_id: int,
+        tg_chat_id: int,
         nick: str,
-        created_by_id: Optional[int] = None,
+        created_by_tg_id: Optional[int] = None,
     ) -> Tuple[Nick, bool]:
-        defaults = {"nick": nick, "created_by_id": created_by_id}
+        user, _ = await User.get_or_create(tg_user_id=tg_user_id)
+        chat, _ = await Chat.get_or_create(tg_chat_id=tg_chat_id)
+        created_by_id = None
+        if created_by_tg_id:
+            created_by, _ = await User.get_or_create(tg_user_id=created_by_tg_id)
+            created_by_id = created_by.id
         obj, created = await Nick.get_or_create(
-            user_id=user_id,
-            cluster_id=cluster_id,
-            defaults=defaults,
+            user_id=user.id,
+            chat_id=chat.id,
+            defaults={"nick": nick, "created_by_id": created_by_id},
         )
+        if not created:
+            obj.nick = nick
+            obj.created_by_id = created_by_id
+            await obj.save()
         return obj, created
 
-    async def delete_record(self, user_id: int, cluster_id: Optional[int]):
-        await Nick.filter(user_id=user_id, cluster_id=cluster_id).delete()
+    async def delete_record(self, tg_user_id: int, tg_chat_id: int):
+        user = await User.filter(tg_user_id=tg_user_id).first()
+        chat = await Chat.filter(tg_chat_id=tg_chat_id).first()
+        if user and chat:
+            await Nick.filter(user_id=user.id, chat_id=chat.id).delete()
 
     async def all(self) -> List[Nick]:
-        return await Nick.all().prefetch_related("user", "cluster", "created_by")
+        return await Nick.all().prefetch_related("user", "chat", "created_by")
+
+    async def get_by_nick(self, tg_chat_id: int, nick: str) -> List[Tuple[str, int]]:
+        chat = await Chat.filter(tg_chat_id=tg_chat_id).first()
+        if not chat:
+            return []
+        nicks = await Nick.filter(chat_id=chat.id, nick__icontains=nick).prefetch_related("user")
+        return [(n.nick, n.user.tg_user_id) for n in nicks]
 
 
 class NickCache(BaseCacheManager):
@@ -84,42 +95,16 @@ class NickCache(BaseCacheManager):
         rows = await self.repo.all()
         async with self._lock:
             for row in rows:
-                key = _make_cache_key(row.user_id, row.cluster_id)  # type: ignore
+                key = _make_cache_key(row.user.tg_user_id, row.chat.tg_chat_id)  # type: ignore
                 self._cache[key] = _CachedNick(
                     id=row.id,
-                    user_id=row.user_id,  # type: ignore
-                    cluster_id=row.cluster_id,  # type: ignore
+                    tg_user_id=row.user.tg_user_id,  # type: ignore
+                    tg_chat_id=row.chat.tg_chat_id,  # type: ignore
                     nick=row.nick,
-                    created_by_id=row.created_by_id,  # type: ignore
+                    created_by_tg_id=row.created_by.tg_user_id if row.created_by else None,  # type: ignore
                     created_at=row.created_at,
                 )
         await super().initialize()
-
-    async def _ensure_cached(
-        self,
-        user_id: int,
-        cluster_id: Optional[int],
-        nick: str,
-        created_by_id: Optional[int] = None,
-    ) -> bool:
-        key = _make_cache_key(user_id, cluster_id)
-        async with self._lock:
-            if key in self._cache:
-                return False
-
-        model, created = await self.repo.ensure_record(
-            user_id, cluster_id, nick, created_by_id
-        )
-        async with self._lock:
-            self._cache[key] = _CachedNick(
-                id=model.id,
-                user_id=model.user_id,  # type: ignore
-                cluster_id=model.cluster_id,  # type: ignore
-                nick=model.nick,
-                created_by_id=model.created_by_id,  # type: ignore
-                created_at=model.created_at,
-            )
-        return created
 
     @overload
     async def get(self, cache_key: CacheKey, fields=None) -> Any: ...
@@ -148,35 +133,47 @@ class NickCache(BaseCacheManager):
 
     async def add_nick(
         self,
-        user_id: int,
-        cluster_id: Optional[int],
+        tg_user_id: int,
+        tg_chat_id: int,
         nick: str,
-        created_by_id: Optional[int] = None,
+        created_by_tg_id: Optional[int] = None,
     ):
-        await self._ensure_cached(user_id, cluster_id, nick, created_by_id)
-        key = _make_cache_key(user_id, cluster_id)
+        key = _make_cache_key(tg_user_id, tg_chat_id)
         async with self._lock:
-            r = self._cache[key]
-            r.nick = nick
-            r.created_by_id = created_by_id
-            self._dirty.add(key)
+            if key in self._cache:
+                r = self._cache[key]
+                r.nick = nick
+                r.created_by_tg_id = created_by_tg_id
+                self._dirty.add(key)
+                return
+        
+        model, created = await self.repo.ensure_record(tg_user_id, tg_chat_id, nick, created_by_tg_id)
+        async with self._lock:
+            self._cache[key] = _CachedNick(
+                id=model.id,
+                tg_user_id=tg_user_id,
+                tg_chat_id=tg_chat_id,
+                nick=model.nick,
+                created_by_tg_id=created_by_tg_id,
+                created_at=model.created_at,
+            )
 
-    async def remove_nick(self, user_id: int, cluster_id: Optional[int]):
-        key = _make_cache_key(user_id, cluster_id)
+    async def remove_nick(self, tg_user_id: int, tg_chat_id: int):
+        key = _make_cache_key(tg_user_id, tg_chat_id)
         async with self._lock:
             if key in self._cache:
                 self._dirty.discard(key)
                 del self._cache[key]
-        await self.repo.delete_record(user_id, cluster_id)
+        await self.repo.delete_record(tg_user_id, tg_chat_id)
 
-    async def get_user_nicks(self, user_id: int) -> List[_CachedNick]:
+    async def get_user_nicks(self, tg_user_id: int) -> List[_CachedNick]:
         async with self._lock:
-            return [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == user_id]
+            return [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == tg_user_id]
 
-    async def get_cluster_nicks(self, cluster_id: Optional[int]) -> List[_CachedNick]:
+    async def get_chat_nicks(self, tg_chat_id: int) -> List[_CachedNick]:
         async with self._lock:
             return [
-                copy.deepcopy(v) for k, v in self._cache.items() if k[1] == cluster_id
+                copy.deepcopy(v) for k, v in self._cache.items() if k[1] == tg_chat_id
             ]
 
     async def sync(self, batch_size: int = 1000):
@@ -195,36 +192,55 @@ class NickCache(BaseCacheManager):
 
         items = list(payloads.items())
         try:
-            user_ids = {key[0] for key in payloads.keys()}
+            tg_user_ids = {key[0] for key in payloads.keys()}
+            tg_chat_ids = {key[1] for key in payloads.keys()}
+            
+            users = await User.filter(tg_user_id__in=list(tg_user_ids))
+            chats = await Chat.filter(tg_chat_id__in=list(tg_chat_ids))
+            user_map = {u.tg_user_id: u.id for u in users}
+            chat_map = {c.tg_chat_id: c.id for c in chats}
+            
+            user_db_ids = [user_map[k[0]] for k in payloads.keys() if k[0] in user_map and k[1] in chat_map]
             existing_rows = await Nick.filter(
-                user_id__in=list(user_ids)
-            ).prefetch_related("user", "cluster")
-            existing_map = {(row.user_id, row.cluster_id): row for row in existing_rows}  # type: ignore
+                user_id__in=user_db_ids
+            ).prefetch_related("user", "chat", "created_by")
+            existing_map = {(row.user.tg_user_id, row.chat.tg_chat_id): row for row in existing_rows}  # type: ignore
 
             to_update = []
             to_create = []
 
             for key, cached in items:
+                tg_user_id, tg_chat_id = key
                 if key in existing_map:
                     row = existing_map[key]
                     dirty = False
                     if row.nick != cached.nick:
                         row.nick = cached.nick
                         dirty = True
-                    if getattr(row, "created_by_id", None) != cached.created_by_id:
-                        row.created_by_id = cached.created_by_id
+                    created_by_id = None
+                    if cached.created_by_tg_id:
+                        cb_user = await User.filter(tg_user_id=cached.created_by_tg_id).first()
+                        if cb_user:
+                            created_by_id = cb_user.id
+                    if getattr(row, "created_by_id", None) != created_by_id:
+                        row.created_by_id = created_by_id
                         dirty = True
                     if dirty:
                         to_update.append(row)
                 else:
-                    if cached.user_id is None:
+                    if tg_user_id not in user_map or tg_chat_id not in chat_map:
                         continue
+                    created_by_id = None
+                    if cached.created_by_tg_id:
+                        cb_user = await User.filter(tg_user_id=cached.created_by_tg_id).first()
+                        if cb_user:
+                            created_by_id = cb_user.id
                     to_create.append(
                         Nick(
-                            user_id=cached.user_id,
-                            cluster_id=cached.cluster_id,
+                            user_id=user_map[tg_user_id],
+                            chat_id=chat_map[tg_chat_id],
                             nick=cached.nick,
-                            created_by_id=cached.created_by_id,
+                            created_by_id=created_by_id,
                         )
                     )
 
@@ -255,12 +271,18 @@ class NickManager(BaseManager):
         self.repo = NickRepository(self._lock)
         self.cache = NickCache(self._lock, self.repo, self._cache)
 
+        self.get = self.cache.get
         self.add_nick = self.cache.add_nick
         self.remove_nick = self.cache.remove_nick
-        self.get = self.cache.get
         self.get_user_nicks = self.cache.get_user_nicks
-        self.get_cluster_nicks = self.cache.get_cluster_nicks
+        self.get_chat_nicks = self.cache.get_chat_nicks
+    
+    def make_cache_key(self, tg_user_id: int, tg_chat_id: int) -> CacheKey:
+        return _make_cache_key(tg_user_id, tg_chat_id)
 
-    async def user_has_nick(self, user_id: int, cluster_id: Optional[int]) -> bool:
-        nick = await self.get(_make_cache_key(user_id, cluster_id), "nick")
+    async def user_has_nick(self, tg_user_id: int, tg_chat_id: int) -> bool:
+        nick = await self.get(_make_cache_key(tg_user_id, tg_chat_id), "nick")
         return nick is not None
+    
+    async def get_by_nick(self, tg_chat_id: int, nick: str) -> List[Tuple[str, int]]:
+        return await self.repo.get_by_nick(tg_chat_id, nick)

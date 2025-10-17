@@ -2,14 +2,14 @@ import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, TypeAlias
 from src.core.managers.base import BaseCachedModel, BaseCacheManager, BaseManager, BaseRepository
-from src.core.models import NewsBroadcast
+from src.core.models import NewsBroadcast, User
 
 
 @dataclass
 class _CachedNewsBroadcast(BaseCachedModel):
     id: Optional[int]
     cluster_id: Optional[int]
-    actor_id: Optional[int]
+    actor_tg_id: Optional[int]
     content: str
     sent_count: int
     success_count: int
@@ -26,7 +26,13 @@ class NewsBroadcastRepository(BaseRepository):
         return await NewsBroadcast.all().prefetch_related("cluster", "actor")
 
     async def ensure_record(self, cluster_id: Optional[int], **fields) -> NewsBroadcast:
-        return await NewsBroadcast.create(cluster_id=cluster_id, **fields)
+        actor_id = None
+        if "actor_tg_id" in fields:
+            actor_tg_id = fields.pop("actor_tg_id")
+            if actor_tg_id:
+                actor, _ = await User.get_or_create(tg_user_id=actor_tg_id)
+                actor_id = actor.id
+        return await NewsBroadcast.create(cluster_id=cluster_id, actor_id=actor_id, **fields)
 
 
 class NewsBroadcastCache(BaseCacheManager):
@@ -43,7 +49,7 @@ class NewsBroadcastCache(BaseCacheManager):
                 self._cache[r.id] = _CachedNewsBroadcast(
                     id=r.id,
                     cluster_id=r.cluster_id,  # type: ignore
-                    actor_id=r.actor_id,  # type: ignore
+                    actor_tg_id=r.actor.tg_user_id if r.actor else None,  # type: ignore
                     content=r.content,
                     sent_count=r.sent_count,
                     success_count=r.success_count,
@@ -53,13 +59,13 @@ class NewsBroadcastCache(BaseCacheManager):
                 )
         await super().initialize()
 
-    async def add_broadcast(self, cluster_id: Optional[int], content: str, actor_id: Optional[int], meta: Optional[dict] = None):
-        model = await self.repo.ensure_record(cluster_id, content=content, actor_id=actor_id, meta=meta)
+    async def add_broadcast(self, cluster_id: Optional[int], content: str, actor_tg_id: Optional[int], meta: Optional[dict] = None):
+        model = await self.repo.ensure_record(cluster_id, content=content, actor_tg_id=actor_tg_id, meta=meta)
         async with self._lock:
             self._cache[model.id] = _CachedNewsBroadcast(
                 id=model.id,
                 cluster_id=model.cluster_id,  # type: ignore
-                actor_id=model.actor_id,  # type: ignore
+                actor_tg_id=actor_tg_id,
                 content=model.content,
                 sent_count=model.sent_count,
                 success_count=model.success_count,
@@ -74,7 +80,6 @@ class NewsBroadcastCache(BaseCacheManager):
             return [copy.deepcopy(v) for v in self._cache.values() if v.cluster_id == cluster_id]
 
     async def sync(self, batch_size: int = 500):
-        # Обычно NewsBroadcast создаются раз и больше не редактируются, так что sync здесь может быть минимальным
         async with self._lock:
             self._dirty.clear()
 
