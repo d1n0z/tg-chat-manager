@@ -39,13 +39,13 @@ async def test_add_and_remove_pin_and_sync(manager):
     ch = await create_chat(1234)
     u = await create_user(77)
 
-    await manager.add_pin(ch.id, 9999, u.id)
-    pins = await manager.get_chat_pins(ch.id)
+    await manager.add_pin(ch.tg_chat_id, 9999, u.tg_user_id)
+    pins = await manager.get_chat_pins(ch.tg_chat_id)
     assert any(p.message_id == 9999 for p in pins)
 
     await manager.cache.sync()
     assert await MessagePin.filter(chat_id=ch.id, message_id=9999).exists()
 
-    await manager.remove_pin(ch.id, 9999)
+    await manager.remove_pin(ch.tg_chat_id, 9999)
     assert not await MessagePin.filter(chat_id=ch.id, message_id=9999).exists()
-    assert await manager.get_chat_pins(ch.id) == []
+    assert await manager.get_chat_pins(ch.tg_chat_id) == []

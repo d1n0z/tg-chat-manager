@@ -10,7 +10,6 @@ from src.core.models import InviteUsage, InviteLink, User, Chat
 
 @pytest_asyncio.fixture
 async def init_db():
-    # Инициализация in-memory SQLite и генерация схем
     await Tortoise.init(
         db_url="sqlite://:memory:", modules={"models": ["src.core.models"]}
     )
@@ -56,30 +55,30 @@ async def manager(init_db):
 @pytest.mark.asyncio
 async def test_add_usage(manager, invite, user):
     used_at = datetime.now(timezone.utc)
-    created = await manager.add_usage(invite.id, user.id, used_at=used_at)
+    created = await manager.add_usage(invite.token, user.tg_user_id, used_at=used_at)
     assert created is True
 
-    cached = await manager.get((invite.id, user.id))
+    cached = await manager.get((invite.token, user.tg_user_id))
     assert cached is not None
-    assert cached.invite_id == invite.id
-    assert cached.user_id == user.id
+    assert cached.invite_token == invite.token
+    assert cached.tg_user_id == user.tg_user_id
     assert abs((cached.used_at - used_at).total_seconds()) < 1
 
 
 @pytest.mark.asyncio
 async def test_add_duplicate_usage(manager, invite, user):
     used_at = datetime.now(timezone.utc)
-    created1 = await manager.add_usage(invite.id, user.id, used_at)
-    created2 = await manager.add_usage(invite.id, user.id, used_at)
+    created1 = await manager.add_usage(invite.token, user.tg_user_id, used_at)
+    created2 = await manager.add_usage(invite.token, user.tg_user_id, used_at)
     assert created1 is True
-    assert created2 is False  # второй вызов не создаёт дубликат
+    assert created2 is False
 
 
 @pytest.mark.asyncio
 async def test_remove_usage(manager, invite, user):
-    await manager.add_usage(invite.id, user.id)
-    await manager.remove_usage(invite.id, user.id)
-    cached = await manager.get((invite.id, user.id))
+    await manager.add_usage(invite.token, user.tg_user_id)
+    await manager.remove_usage(invite.token, user.tg_user_id)
+    cached = await manager.get((invite.token, user.tg_user_id))
     assert cached is None
     assert not await InviteUsage.filter(invite_id=invite.id, user_id=user.id).exists()
 
@@ -87,14 +86,14 @@ async def test_remove_usage(manager, invite, user):
 @pytest.mark.asyncio
 async def test_get_invite_usages(manager, invite, user):
     u2 = await User.create(tg_user_id=888, username="AnotherUser")
-    await manager.add_usage(invite.id, user.id)
-    await manager.add_usage(invite.id, u2.id)
+    await manager.add_usage(invite.token, user.tg_user_id)
+    await manager.add_usage(invite.token, u2.tg_user_id)
 
-    usages = await manager.get_invite_usages(invite.id)
+    usages = await manager.get_invite_usages(invite.token)
     assert len(usages) == 2
-    user_ids = {u.user_id for u in usages}
-    assert user.id in user_ids
-    assert u2.id in user_ids
+    user_ids = {u.tg_user_id for u in usages}
+    assert user.tg_user_id in user_ids
+    assert u2.tg_user_id in user_ids
 
 
 @pytest.mark.asyncio
@@ -109,18 +108,21 @@ async def test_get_user_usages(manager, invite, user):
         is_active=True,
     )
 
-    await manager.add_usage(invite.id, user.id)
-    await manager.add_usage(invite2.id, user.id)
+    await manager.add_usage(invite.token, user.tg_user_id)
+    await manager.add_usage(invite2.token, user.tg_user_id)
 
-    usages = await manager.get_user_usages(user.id)
+    usages = await manager.get_user_usages(user.tg_user_id)
     assert len(usages) == 2
-    invite_ids = {u.invite_id for u in usages}
-    assert invite.id in invite_ids
-    assert invite2.id in invite_ids
+    invite_tokens = {u.invite_token for u in usages}
+    assert invite.token in invite_tokens
+    assert invite2.token in invite_tokens
 
 
 @pytest.mark.asyncio
 async def test_sync_creates_and_updates(manager, invite, user):
     used_at_1 = datetime.now(timezone.utc) - timedelta(minutes=5)
-    await manager.add_usage(invite.id, user.id, used_at_1)
+    await manager.add_usage(invite.token, user.tg_user_id, used_at_1)
     await manager.cache.sync()
+    
+    db_usage = await InviteUsage.filter(invite_id=invite.id, user_id=user.id).first()
+    assert db_usage is not None

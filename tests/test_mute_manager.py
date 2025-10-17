@@ -42,11 +42,10 @@ async def test_initialize_loads_existing_mutes(init_db):
     mgr = MuteManager()
     await mgr.initialize()
 
-    # get_user_mutes and get_chat_mutes should include cached mute
-    res = await mgr.get_user_mutes(u.id)
+    res = await mgr.get_user_mutes(u.tg_user_id)
     assert isinstance(res, list) and any(r.reason == "test" for r in res)
 
-    res2 = await mgr.get_chat_mutes(c.id)
+    res2 = await mgr.get_chat_mutes(c.tg_chat_id)
     assert isinstance(res2, list) and any(r.reason == "test" for r in res2)
 
 
@@ -72,7 +71,6 @@ async def test_add_and_remove_mute_and_sync(manager, init_db):
 
 
 async def test_remove_nonexistent_does_not_raise(manager):
-    # no exception expected
     await manager.remove_mute(9999, 8888)
 
 

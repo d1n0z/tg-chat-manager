@@ -45,9 +45,8 @@ async def test_add_log_and_get(manager):
     actor = await create_user(701)
     target = await create_user(702)
 
-    await manager.add_log(cluster_id=cl.id, chat_id=ch.id, action="MUTE", target_user_id=target.id, actor_user_id=actor.id, reason="spam")
+    await manager.add_log(cluster_id=cl.id, tg_chat_id=ch.tg_chat_id, action="MUTE", target_tg_user_id=target.tg_user_id, actor_tg_user_id=actor.tg_user_id, reason="spam")
     logs = await manager.get_cluster_logs(cl.id)
     assert any(log.action == "MUTE" and log.reason == "spam" for log in logs)
 
-    # persisted
     assert await LogEntry.filter(cluster_id=cl.id, action="MUTE").exists()

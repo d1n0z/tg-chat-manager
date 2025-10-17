@@ -33,54 +33,53 @@ async def create_chat(tg_chat_id=444):
 
 async def test_set_get_remove_and_sync(manager):
     ch = await create_chat(4444)
-    await manager.set(ch.id, "theme", {"color": "blue"})
-    v = await manager.get(ch.id, "theme")
+    await manager.set(ch.tg_chat_id, "theme", {"color": "blue"})
+    v = await manager.get(ch.tg_chat_id, "theme")
     assert v == {"color": "blue"}
 
-    # sync persists
     await manager.cache.sync()
     assert await ChatSetting.filter(chat_id=ch.id, key="theme").exists()
 
-    await manager.remove(ch.id, "theme")
+    await manager.remove(ch.tg_chat_id, "theme")
     assert await ChatSetting.filter(chat_id=ch.id, key="theme").exists() is False
-    assert await manager.get(ch.id, "theme") is None
+    assert await manager.get(ch.tg_chat_id, "theme") is None
 
 
 async def test_get_nonexistent_setting(manager):
     ch = await create_chat(5555)
-    result = await manager.get(ch.id, "nonexistent")
+    result = await manager.get(ch.tg_chat_id, "nonexistent")
     assert result is None
 
 
 async def test_update_setting(manager):
     ch = await create_chat(6666)
-    await manager.set(ch.id, "lang", {"code": "en"})
-    await manager.set(ch.id, "lang", {"code": "ru"})
-    v = await manager.get(ch.id, "lang")
+    await manager.set(ch.tg_chat_id, "lang", {"code": "en"})
+    await manager.set(ch.tg_chat_id, "lang", {"code": "ru"})
+    v = await manager.get(ch.tg_chat_id, "lang")
     assert v == {"code": "ru"}
     await manager.cache.sync()
     db = await ChatSetting.filter(chat_id=ch.id, key="lang").first()
-    assert db.value == {"code": "ru"}  # type: ignorre
+    assert db.value == {"code": "ru"}  # type: ignore
 
 
 async def test_multiple_settings_same_chat(manager):
     ch = await create_chat(7777)
-    await manager.set(ch.id, "k1", {"v": 1})
-    await manager.set(ch.id, "k2", {"v": 2})
-    await manager.set(ch.id, "k3", {"v": 3})
-    assert await manager.get(ch.id, "k1") == {"v": 1}
-    assert await manager.get(ch.id, "k2") == {"v": 2}
-    assert await manager.get(ch.id, "k3") == {"v": 3}
+    await manager.set(ch.tg_chat_id, "k1", {"v": 1})
+    await manager.set(ch.tg_chat_id, "k2", {"v": 2})
+    await manager.set(ch.tg_chat_id, "k3", {"v": 3})
+    assert await manager.get(ch.tg_chat_id, "k1") == {"v": 1}
+    assert await manager.get(ch.tg_chat_id, "k2") == {"v": 2}
+    assert await manager.get(ch.tg_chat_id, "k3") == {"v": 3}
 
 
 async def test_remove_nonexistent_setting(manager):
     ch = await create_chat(8888)
-    await manager.remove(ch.id, "nonexistent")
+    await manager.remove(ch.tg_chat_id, "nonexistent")
 
 
 async def test_set_complex_value(manager):
     ch = await create_chat(9999)
     complex_val = {"nested": {"data": [1, 2, 3]}, "flag": True}
-    await manager.set(ch.id, "complex", complex_val)
-    v = await manager.get(ch.id, "complex")
+    await manager.set(ch.tg_chat_id, "complex", complex_val)
+    v = await manager.get(ch.tg_chat_id, "complex")
     assert v == complex_val

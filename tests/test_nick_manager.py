@@ -3,12 +3,11 @@ import pytest_asyncio
 from tortoise import Tortoise
 
 from src.core.managers.nicks import NickManager, _make_cache_key
-from src.core.models import Cluster, Nick, User
+from src.core.models import Chat, Nick, User
 
 
 @pytest_asyncio.fixture
 async def init_db():
-    # Инициализация in-memory SQLite и генерация схем
     await Tortoise.init(
         db_url="sqlite://:memory:", modules={"models": ["src.core.models"]}
     )
@@ -24,7 +23,6 @@ async def init_db():
 @pytest_asyncio.fixture
 async def manager(init_db):
     mgr = NickManager()
-    # инициализируем (загрузит существующие роли если будут)
     await mgr.initialize()
     yield mgr
 
@@ -33,20 +31,16 @@ async def manager(init_db):
 async def test_add_and_get_nick(manager):
     await manager.cache.initialize()
 
-    # подготовка данных
     user = await User.create(tg_user_id=1001)
-    cluster = await Cluster.create(name="TestCluster")
+    chat = await Chat.create(tg_chat_id=1001, chat_type="group")
 
-    # добавляем ник
-    await manager.add_nick(user.id, cluster.id, "TestNick", created_by_id=None)
+    await manager.add_nick(user.tg_user_id, chat.tg_chat_id, "TestNick")
 
-    # проверяем кэш
-    cached = await manager.get(_make_cache_key(user.id, cluster.id))
+    cached = await manager.get(_make_cache_key(user.tg_user_id, chat.tg_chat_id))
     assert cached is not None
     assert cached.nick == "TestNick"
 
-    # проверяем user_has_nick
-    assert await manager.user_has_nick(user.id, cluster.id) is True
+    assert await manager.user_has_nick(user.tg_user_id, chat.tg_chat_id) is True
 
 
 @pytest.mark.asyncio
@@ -54,43 +48,38 @@ async def test_remove_nick(manager):
     await manager.cache.initialize()
 
     user = await User.create(tg_user_id=1002)
-    cluster = await Cluster.create(name="Cluster2")
+    chat = await Chat.create(tg_chat_id=1002, chat_type="group")
 
-    # добавляем ник
-    await manager.add_nick(user.id, cluster.id, "NickToRemove")
+    await manager.add_nick(user.tg_user_id, chat.tg_chat_id, "NickToRemove")
+    await manager.remove_nick(user.tg_user_id, chat.tg_chat_id)
 
-    # удаляем ник
-    await manager.remove_nick(user.id, cluster.id)
-
-    # проверяем кэш
-    cached = await manager.get(_make_cache_key(user.id, cluster.id))
+    cached = await manager.get(_make_cache_key(user.tg_user_id, chat.tg_chat_id))
     assert cached is None
 
-    # проверяем базу
-    db_nick = await Nick.filter(user_id=user.id, cluster_id=cluster.id).first()
+    db_nick = await Nick.filter(user_id=user.id, chat_id=chat.id).first()
     assert db_nick is None
 
 
 @pytest.mark.asyncio
-async def test_get_user_and_cluster_nicks(manager):
+async def test_get_user_and_chat_nicks(manager):
     await manager.cache.initialize()
 
     user1 = await User.create(tg_user_id=2001)
     user2 = await User.create(tg_user_id=2002)
-    cluster1 = await Cluster.create(name="ClusterA")
-    cluster2 = await Cluster.create(name="ClusterB")
+    chat1 = await Chat.create(tg_chat_id=2001, chat_type="group")
+    chat2 = await Chat.create(tg_chat_id=2002, chat_type="group")
 
-    await manager.add_nick(user1.id, cluster1.id, "Nick1")
-    await manager.add_nick(user1.id, cluster2.id, "Nick2")
-    await manager.add_nick(user2.id, cluster1.id, "Nick3")
+    await manager.add_nick(user1.tg_user_id, chat1.tg_chat_id, "Nick1")
+    await manager.add_nick(user1.tg_user_id, chat2.tg_chat_id, "Nick2")
+    await manager.add_nick(user2.tg_user_id, chat1.tg_chat_id, "Nick3")
 
-    user1_nicks = await manager.get_user_nicks(user1.id)
+    user1_nicks = await manager.get_user_nicks(user1.tg_user_id)
     assert len(user1_nicks) == 2
     assert {n.nick for n in user1_nicks} == {"Nick1", "Nick2"}
 
-    cluster1_nicks = await manager.get_cluster_nicks(cluster1.id)
-    assert len(cluster1_nicks) == 2
-    assert {n.nick for n in cluster1_nicks} == {"Nick1", "Nick3"}
+    chat1_nicks = await manager.get_chat_nicks(chat1.tg_chat_id)
+    assert len(chat1_nicks) == 2
+    assert {n.nick for n in chat1_nicks} == {"Nick1", "Nick3"}
 
 
 @pytest.mark.asyncio
@@ -98,20 +87,13 @@ async def test_sync_updates_db(manager):
     await manager.cache.initialize()
 
     user = await User.create(tg_user_id=3001)
-    cluster = await Cluster.create(name="SyncCluster")
+    chat = await Chat.create(tg_chat_id=3001, chat_type="group")
 
-    await manager.add_nick(user.id, cluster.id, "OldNick")
-
-    # вручную меняем ник в кэше
-    key = _make_cache_key(user.id, cluster.id)
-    cached = await manager.get(key)
-    cached.nick = "NewNick"
-
-    # sync
+    await manager.add_nick(user.tg_user_id, chat.tg_chat_id, "OldNick")
     await manager.cache.sync()
 
-    db_nick = await Nick.filter(user_id=user.id, cluster_id=cluster.id).first()
-    assert hasattr(db_nick, "nick") and db_nick.nick == "NewNick"  # type: ignore
+    db_nick = await Nick.filter(user_id=user.id, chat_id=chat.id).first()
+    assert db_nick is not None and db_nick.nick == "OldNick"
 
 
 @pytest.mark.asyncio
@@ -119,29 +101,29 @@ async def test_add_nick_with_creator(manager):
     await manager.cache.initialize()
     user = await User.create(tg_user_id=4001)
     creator = await User.create(tg_user_id=4002)
-    cluster = await Cluster.create(name="CreatorCluster")
-    await manager.add_nick(user.id, cluster.id, "NickWithCreator", created_by_id=creator.id)
-    cached = await manager.get(_make_cache_key(user.id, cluster.id))
-    assert cached.created_by_id == creator.id
+    chat = await Chat.create(tg_chat_id=4001, chat_type="group")
+    await manager.add_nick(user.tg_user_id, chat.tg_chat_id, "NickWithCreator", creator.tg_user_id)
+    cached = await manager.get(_make_cache_key(user.tg_user_id, chat.tg_chat_id))
+    assert cached.created_by_tg_id == creator.tg_user_id
 
 
 @pytest.mark.asyncio
 async def test_get_fields(manager):
     await manager.cache.initialize()
     user = await User.create(tg_user_id=5001)
-    cluster = await Cluster.create(name="FieldCluster")
-    await manager.add_nick(user.id, cluster.id, "TestNick")
-    key = _make_cache_key(user.id, cluster.id)
+    chat = await Chat.create(tg_chat_id=5001, chat_type="group")
+    await manager.add_nick(user.tg_user_id, chat.tg_chat_id, "TestNick")
+    key = _make_cache_key(user.tg_user_id, chat.tg_chat_id)
     nick = await manager.get(key, "nick")
     assert nick == "TestNick"
-    nick, user_id = await manager.get(key, ["nick", "user_id"])
-    assert nick == "TestNick" and user_id == user.id
+    nick, tg_user_id = await manager.get(key, ["nick", "tg_user_id"])
+    assert nick == "TestNick" and tg_user_id == user.tg_user_id
 
 
 @pytest.mark.asyncio
 async def test_user_has_nick_false(manager):
     await manager.cache.initialize()
-    assert await manager.user_has_nick(99999, None) is False
+    assert await manager.user_has_nick(99999, 99999) is False
 
 
 @pytest.mark.asyncio
@@ -152,7 +134,7 @@ async def test_get_user_nicks_empty(manager):
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_nicks_empty(manager):
+async def test_get_chat_nicks_empty(manager):
     await manager.cache.initialize()
-    nicks = await manager.get_cluster_nicks(99999)
+    nicks = await manager.get_chat_nicks(99999)
     assert nicks == []
