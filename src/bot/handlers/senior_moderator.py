@@ -38,33 +38,31 @@ async def set_nick(message: Message, command: CommandObject):
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user_id = message.reply_to_message.from_user.id
         if not command.args:
-            await message.answer("Использование: /snick [ник] ответом на сообщение.")
-            return
+            return await message.answer(
+                "Использование: /snick [ник] ответом на сообщение."
+            )
         nick = command.args.strip()
     elif command.args:
         args = command.args.split(maxsplit=1)
         if len(args) < 2:
-            await message.answer(
+            return await message.answer(
                 "Использование: /snick @username [ник] или ответом на сообщение."
             )
-            return
         username = args[0].lstrip("@")
         nick = args[1].strip()
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
     else:
-        await message.answer(
+        return await message.answer(
             "Использование: /snick @username [ник] или ответом на сообщение."
         )
-        return
 
     await managers.nicks.add_nick(
         target_user_id, message.chat.id, nick, message.from_user.id
     )
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(
+    return await message.answer(
         f"Ник установлен пользователю {username}: <code>{nick}</code>."
     )
 
@@ -81,17 +79,15 @@ async def remove_nick(message: Message, command: CommandObject):
         username = command.args.lstrip("@")
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
     else:
-        await message.answer(
+        return await message.answer(
             "Использование: /rnick @username или ответом на сообщение."
         )
-        return
 
     await managers.nicks.remove_nick(target_user_id, message.chat.id)
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(f"Ник удалён у пользователя {username}.")
+    return await message.answer(f"Ник удалён у пользователя {username}.")
 
 
 @router.message(
@@ -117,32 +113,28 @@ async def mute_user(message: Message, command: CommandObject):
                 duration = timedelta(days=400)
                 reason = args[1] if len(args) > 1 else None
         except Exception:
-            await message.answer(
+            return await message.answer(
                 "Использование: /mute @username [время] [причина] или ответом на сообщение."
             )
-            return
 
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
 
     if not duration:
-        await message.answer("Неверный формат времени. Используйте: 10m, 1h, 1d.")
-        return
+        return await message.answer(
+            "Неверный формат времени. Используйте: 10m, 1h, 1d."
+        )
 
     if target_user_id == message.from_user.id:
-        await message.answer("Нельзя замутить самого себя.")
-        return
+        return await message.answer("Нельзя замутить самого себя.")
 
     if target_user_id == message.bot.id:
-        await message.answer("Нельзя замутить бота.")
-        return
+        return await message.answer("Нельзя замутить бота.")
 
     target_member = await message.bot.get_chat_member(message.chat.id, target_user_id)
     if target_member.status in ["creator", "administrator"]:
-        await message.answer("Нельзя замутить администратора чата.")
-        return
+        return await message.answer("Нельзя замутить администратора чата.")
 
     start_at = datetime.now(timezone.utc)
     end_at = start_at + duration
@@ -172,7 +164,7 @@ async def mute_user(message: Message, command: CommandObject):
         if end_at - datetime.now(timezone.utc) < timedelta(days=365)
         else "навсегда"
     )
-    await message.answer(
+    return await message.answer(
         f"Пользователь {username} замучен {end_at_text}.{f' Причина: {reason}' if reason else ''}",
         reply_markup=keyboards.mute_actions(message.from_user.id, target_user_id),
     )
@@ -190,13 +182,11 @@ async def unmute_user(message: Message, command: CommandObject):
         username = command.args.lstrip("@")
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
     else:
-        await message.answer(
+        return await message.answer(
             "Использование: /unmute @username или ответом на сообщение."
         )
-        return
 
     await message.bot.restrict_chat_member(
         message.chat.id,
@@ -212,30 +202,26 @@ async def unmute_user(message: Message, command: CommandObject):
 
     await managers.mutes.remove_mute(target_user_id, message.chat.id)
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(f"Мут снят с пользователя {username}.")
+    return await message.answer(f"Мут снят с пользователя {username}.")
 
 
 @router.callback_query(callbackdata.MuteAction.filter())
 async def mute_callback(query: CallbackQuery, callback_data: callbackdata.MuteAction):
     duration = _parse_duration(callback_data.duration)
     if not duration:
-        await query.answer("Ошибка времени.", show_alert=True)
-        return
+        return await query.answer("Ошибка времени.", show_alert=True)
 
     if callback_data.user_id == query.from_user.id:
-        await query.answer("Нельзя замутить самого себя.", show_alert=True)
-        return
+        return await query.answer("Нельзя замутить самого себя.", show_alert=True)
 
     if callback_data.user_id == query.bot.id:
-        await query.answer("Нельзя замутить бота.", show_alert=True)
-        return
+        return await query.answer("Нельзя замутить бота.", show_alert=True)
 
     target_member = await query.bot.get_chat_member(
         query.message.chat.id, callback_data.user_id
     )
     if target_member.status in ["creator", "administrator"]:
-        await query.answer("Нельзя замутить администратора.", show_alert=True)
-        return
+        return await query.answer("Нельзя замутить администратора.", show_alert=True)
 
     existing_mute = await managers.mutes.get(
         callback_data.user_id, query.message.chat.id
@@ -301,7 +287,9 @@ async def unmute_callback(
     )
     await query.message.edit_text(
         f"Мут снят с пользователя {username}.",
-        reply_markup=keyboards.mute_actions(callback_data.user_id, callback_data.user_id),
+        reply_markup=keyboards.mute_actions(
+            callback_data.user_id, callback_data.user_id
+        ),
     )
 
 
@@ -312,8 +300,7 @@ async def unmute_callback(
 )
 async def pin_message(message: Message):
     if not message.reply_to_message:
-        await message.answer("Использование: /pin ответом на сообщение.")
-        return
+        return await message.answer("Использование: /pin ответом на сообщение.")
 
     await message.bot.pin_chat_message(
         message.chat.id,
@@ -325,7 +312,7 @@ async def pin_message(message: Message):
         message.reply_to_message.message_id,
         message.from_user.id,
     )
-    await message.answer("Сообщение закреплено.")
+    return await message.answer("Сообщение закреплено.")
 
 
 @router.message(
@@ -335,14 +322,13 @@ async def pin_message(message: Message):
 )
 async def unpin_message(message: Message):
     if not message.reply_to_message:
-        await message.answer("Использование: /unpin ответом на сообщение.")
-        return
+        return await message.answer("Использование: /unpin ответом на сообщение.")
 
     await message.bot.unpin_chat_message(
         chat_id=message.chat.id,
         message_id=message.reply_to_message.message_id,
     )
-    await message.answer("Сообщение откреплено.")
+    return await message.answer("Сообщение откреплено.")
 
 
 @router.message(
@@ -358,31 +344,27 @@ async def set_role(message: Message, command: CommandObject):
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user_id = message.reply_to_message.from_user.id
         if not command.args:
-            await message.answer(help_text)
-            return
+            return await message.answer(help_text)
         role_str = command.args.strip().lower()
     elif command.args:
         args = command.args.split(maxsplit=1)
         if len(args) < 2:
-            await message.answer(help_text)
-            return
+            return await message.answer(help_text)
         username = args[0].lstrip("@")
         role_str = args[1].strip().lower()
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
+
     else:
-        await message.answer(help_text)
-        return
+        return await message.answer(help_text)
 
     try:
         role = enums.Role(role_str)
     except ValueError:
-        await message.answer(
+        return await message.answer(
             f"Неверная роль. Доступны только: {', '.join(allowed_roles)}."
         )
-        return
 
     is_owner = await managers.users.is_owner(message.from_user.id)
     author_role = (
@@ -394,48 +376,44 @@ async def set_role(message: Message, command: CommandObject):
     )
 
     if role == enums.Role.admin and not is_owner:
-        await message.answer("Только владелец может выдавать роль admin.")
-        return
+        return await message.answer("Только владелец может выдавать роль admin.")
 
     if (
         role == enums.Role.senior_moderator
         and author_role.level < enums.Role.admin.level
     ):
-        await message.answer(
+        return await message.answer(
             "Только администратор может выдавать роль senior_moderator."
         )
-        return
 
     if (
         role.level > enums.Role.moderator.level
         and author_role.level < enums.Role.admin.level
         and not is_owner
     ):
-        await message.answer("Вы можете выдавать только роли user и moderator.")
-        return
+        return await message.answer("Вы можете выдавать только роли user и moderator.")
 
     if target_user_id == message.from_user.id:
-        await message.answer("Нельзя изменить роль самому себе.")
-        return
+        return await message.answer("Нельзя изменить роль самому себе.")
 
     if target_user_id == message.bot.id:
-        await message.answer("Нельзя изменить роль бота.")
-        return
+        return await message.answer("Нельзя изменить роль бота.")
 
     target_role = await managers.user_roles.get(
         managers.user_roles.make_cache_key(target_user_id, message.chat.id), "level"
     )
     if target_role and target_role.level >= author_role.level and not is_owner:
-        await message.answer(
+        return await message.answer(
             "Нельзя изменить роль пользователя с ролью равной или выше вашей."
         )
-        return
 
     await managers.user_roles.add_role(
         target_user_id, message.chat.id, role, message.from_user.id
     )
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(f"Роль {role.value} установлена пользователю {username}.")
+    return await message.answer(
+        f"Роль {role.value} установлена пользователю {username}."
+    )
 
 
 @router.message(
@@ -450,21 +428,18 @@ async def remove_role(message: Message, command: CommandObject):
         username = command.args.lstrip("@")
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
-            await message.answer(f"Пользователь @{username} не найден.")
-            return
+            return await message.answer(f"Пользователь @{username} не найден.")
+
     else:
-        await message.answer(
+        return await message.answer(
             "Использование: /removerole @username или ответом на сообщение."
         )
-        return
 
     if target_user_id == message.from_user.id:
-        await message.answer("Нельзя удалить роль самому себе.")
-        return
+        return await message.answer("Нельзя удалить роль самому себе.")
 
     if target_user_id == message.bot.id:
-        await message.answer("Нельзя удалить роль бота.")
-        return
+        return await message.answer("Нельзя удалить роль бота.")
 
     is_owner = await managers.users.is_owner(message.from_user.id)
     author_role = (
@@ -479,11 +454,10 @@ async def remove_role(message: Message, command: CommandObject):
         managers.user_roles.make_cache_key(target_user_id, message.chat.id), "level"
     )
     if target_role and target_role.level >= author_role.level and not is_owner:
-        await message.answer(
+        return await message.answer(
             "Нельзя удалить роль пользователя с ролью равной или выше вашей."
         )
-        return
 
     await managers.user_roles.remove_role(target_user_id, message.chat.id)
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
-    await message.answer(f"Роль удалена у пользователя {username}.")
+    return await message.answer(f"Роль удалена у пользователя {username}.")

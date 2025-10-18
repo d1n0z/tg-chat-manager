@@ -9,6 +9,7 @@ from src.core.managers.global_ban import GlobalBanManager
 from src.core.managers.invite_links import InviteLinkManager
 from src.core.managers.invite_usage import InviteUsageManager
 from src.core.managers.log_entry import LogEntryManager
+from src.core.managers.message_logs import MessageLogManager
 from src.core.managers.message_pins import MessagePinManager
 from src.core.managers.mute import MuteManager
 from src.core.managers.news_broadcast import NewsBroadcastManager
@@ -28,6 +29,7 @@ to_init = [
     invite_links := InviteLinkManager(),
     invite_usage := InviteUsageManager(),
     log_entries := LogEntryManager(),
+    message_logs := MessageLogManager(),
     message_pins := MessagePinManager(),
     mutes := MuteManager(),
     news_broadcasts := NewsBroadcastManager(),

@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
+from src.bot.utils import get_chat_info
 from src.core import enums, managers
 
 
@@ -19,7 +20,7 @@ async def answer_to(
     if isinstance(message_or_callback_querry, AiogramCallbackQuery):
         await message_or_callback_querry.message.edit_text(**kwargs)
     else:
-        await message_or_callback_querry.answer(**kwargs)
+        return await message_or_callback_querry.answer(**kwargs)
 
 
 router = Router()
@@ -77,7 +78,6 @@ async def all_chats(
 @router.callback_query(callbackdata.ChatSelect.filter())
 async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSelect):
     tg_chat_id = int(callback_data.chat_id)
-    title = await managers.chats.get(tg_chat_id, "title")
 
     existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
     invite_url = None
@@ -91,12 +91,8 @@ async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSe
                 invite_url = f"https://t.me/+{invite.token}"
                 break
 
-    text = f"Информация о чате\n\nНазвание: {title}\nID: {tg_chat_id}"
-    if invite_url:
-        text += f"\n\nПригласительная ссылка: {invite_url}\nДействует 1 час, на 1 вступление"
-
     await query.message.edit_text(
-        text=text,
+        text=await get_chat_info(query.bot, tg_chat_id, invite_url),
         reply_markup=keyboards.chat_card(query.from_user.id, tg_chat_id, invite_url),
     )
 
@@ -111,8 +107,6 @@ async def generate_invite(
     if not bot:
         return
     try:
-        title = await managers.chats.get(tg_chat_id, "title")
-
         existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
         for invite in existing_invites:
             if invite.creator_tg_id == query.from_user.id:
@@ -139,17 +133,10 @@ async def generate_invite(
             single_use=True,
         )
 
-        invite_url = invite_link.invite_link
-        text = f"""Информация о чате\n
-Название: {title}
-ID: {tg_chat_id}\n
-Пригласительная ссылка: {invite_url}
-Действует 1 час, на 1 вступление"""
-
         await query.message.edit_text(
-            text=text,
+            text=await get_chat_info(query.bot, tg_chat_id, invite_link.invite_link),
             reply_markup=keyboards.chat_card(
-                query.from_user.id, tg_chat_id, invite_url
+                query.from_user.id, tg_chat_id, invite_link.invite_link
             ),
         )
     except Exception as e:
@@ -157,7 +144,7 @@ ID: {tg_chat_id}\n
             return
         loguru.logger.exception("start.generate_invite handler exception:")
         try:
-            await query.answer(f"Ошибка: {e}", show_alert=True)
+            return await query.answer(f"Ошибка: {e}", show_alert=True)
         except TelegramBadRequest as e:
             if "MESSAGE_TOO_LONG" == str(e).split()[-1]:
                 pass
