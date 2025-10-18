@@ -22,13 +22,8 @@ class start(MagicKeyboard):
 
 class chats_paginate(MagicKeyboard):
     def __init__(self, chats: list[tuple[int, str]], page: int = 0, maxpage: int = 0):
-        for i in range(0, len(chats), 2):
-            row_buttons = [self.cb(chats[i][1], ChatSelect(chat_id=chats[i][0]))]
-            if i + 1 < len(chats):
-                row_buttons.append(
-                    self.cb(chats[i + 1][1], ChatSelect(chat_id=chats[i + 1][0]))
-                )
-            self.row(*row_buttons)
+        for i in chats:
+            self.row(self.cb(i[1], ChatSelect(chat_id=i[0])))
 
         row = []
         if page > 0:
