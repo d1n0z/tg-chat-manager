@@ -7,7 +7,7 @@ from aiogram.types import ChatMemberUpdated
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import CallbackQuery
 from src.bot.utils import get_user_display
-from src.core import managers
+from src.core import enums, managers
 from src.core.config import settings
 
 router = Router()
@@ -17,15 +17,29 @@ router = Router()
 async def track_invite_usage(event: ChatMemberUpdated):
     if not event.new_chat_member.user.is_bot:
         user = await managers.users.ensure_user(event.new_chat_member.user.id)
-        if event.bot and user.banned_until and user.banned_until > datetime.now(timezone.utc):
-            await event.bot.ban_chat_member(event.chat.id, event.new_chat_member.user.id)
-            return await event.bot.unban_chat_member(event.chat.id, event.new_chat_member.user.id)
+        if user.tg_user_id in settings.ADMIN_TELEGRAM_IDS:
+            await managers.user_roles.add_role(
+                user.tg_user_id, event.chat.id, enums.Role.admin
+            )
+        if (
+            event.bot
+            and user.banned_until
+            and user.banned_until > datetime.now(timezone.utc)
+        ):
+            await event.bot.ban_chat_member(
+                event.chat.id, event.new_chat_member.user.id
+            )
+            return await event.bot.unban_chat_member(
+                event.chat.id, event.new_chat_member.user.id
+            )
     if event.old_chat_member.status in [
         "left",
         "kicked",
     ] and event.new_chat_member.status not in ["left", "kicked"]:
         global_cluster = await managers.clusters.repo.get_global()
-        if event.bot and (welcome := await managers.welcome_messages.get(global_cluster.id)):
+        if event.bot and (
+            welcome := await managers.welcome_messages.get(global_cluster.id)
+        ):
             await event.bot.send_message(
                 event.chat.id,
                 welcome.text,
@@ -58,7 +72,7 @@ async def activate(query: CallbackQuery):
         query.from_user.id, query.message.chat.id
     ):
         return await query.answer("🔴 У вас нет прав.", show_alert=True)
-    
+
     invite_link = await query.bot.create_chat_invite_link(
         query.message.chat.id,
         name="Invite_Infinite",
