@@ -95,7 +95,7 @@ async def all_chats(
         query.from_user.id, enums.Role.moderator
     )
     chat_names = [
-        (tg_cid, await managers.chats.get(tg_cid, "title") or f"Chat {tg_cid}")
+        (tg_cid, await managers.chats.get(tg_cid, "title") or (await query.bot.get_chat(tg_cid)).title or f"Chat {tg_cid}")
         for tg_cid in tg_chat_ids
     ]
 
