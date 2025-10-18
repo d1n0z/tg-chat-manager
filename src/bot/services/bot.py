@@ -68,8 +68,6 @@ class BotService:
             await self.initialize()
         if self._bot is None or self._dp is None:
             raise RuntimeError("The bot or dispatcher failed to initialize.")
-        asyncio.create_task(
-            self._dp.start_polling(
-                self._bot, allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"]
+        await self._dp.start_polling(
+            self._bot, allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"]
             )
-        )
