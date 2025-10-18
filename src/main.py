@@ -2,23 +2,29 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from loguru import logger
-from tortoise import Tortoise
 
-from src.bot.services.bot import BotService, BotServiceConfig
-from src.core import logging, managers, models
 from src.core.config import database_config, settings
+from src.core import logging
 
-logging.setup_logger(level='INFO')
+logging.setup_logger(level="INFO")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from tortoise import Tortoise
+
     await Tortoise.init(database_config)
     await Tortoise.generate_schemas()
+
+    from src.core import managers, models
+
     await models.init()
     await managers.initialize()
+
+    from src.bot.services.bot import BotService, BotServiceConfig
+
     botservice = BotService(service_config=BotServiceConfig(token=settings.TOKEN))
-    
+
     await botservice.run()
 
     logger.success("Bot successfully started")
