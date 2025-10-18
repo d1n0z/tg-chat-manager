@@ -72,6 +72,8 @@ async def activate(query: CallbackQuery):
         query.from_user.id, query.message.chat.id
     ):
         return await query.answer("🔴 У вас нет прав.", show_alert=True)
+    async for user in managers.pyrogram_client.get_chat_members(query.message.chat.id):  # type: ignore
+        await managers.user_roles.chat_activation(user.user.id, query.message.chat.id)
 
     invite_link = await query.bot.create_chat_invite_link(
         query.message.chat.id,

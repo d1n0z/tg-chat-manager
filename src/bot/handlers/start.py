@@ -30,7 +30,12 @@ router = Router()
 @router.message(Command("start"), F.chat.type == ChatType.PRIVATE)
 @router.callback_query(F.data == "start")
 async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
-    await answer_to(
+    if not len(await managers.user_roles.get_user_roles(message_or_callback_querry.from_user.id)):
+        return await answer_to(
+            message_or_callback_querry,
+            text="У вас нет доступа к этому боту."
+        )
+    return await answer_to(
         message_or_callback_querry,
         text="Добро пожаловать.",
         reply_markup=keyboards.start(message_or_callback_querry.from_user.id),

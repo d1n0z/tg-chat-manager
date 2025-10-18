@@ -193,11 +193,12 @@ class UserRoleCache(BaseCacheManager):
         async with self._lock:
             r = self._cache[key]
             r.level = level
-            if assigned_by_tg is not None:
-                assigned_by, _ = await self.repo.ensure_user(assigned_by_tg)
+        if assigned_by_tg is not None:
+            assigned_by, _ = await self.repo.ensure_user(assigned_by_tg)
+            async with self._lock:
                 r.assigned_by_tg = assigned_by.tg_user_id
                 r.assigned_by_id = assigned_by.id
-            self._dirty.add(key)
+                self._dirty.add(key)
 
     async def remove_role(self, tg_user_id: int, tg_chat_id: int):
         key = _make_cache_key(tg_user_id, tg_chat_id)
