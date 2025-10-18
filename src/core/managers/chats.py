@@ -31,6 +31,7 @@ class _CachedChat(BaseCachedModel):
     chat_type: Optional[str]
     cluster_id: Optional[int]
     is_active: bool
+    infinite_invite_link: Optional[str]
     settings: Optional[dict]
     created_at: Any
 
@@ -45,6 +46,7 @@ DEFAULT_CHAT = {
     "chat_type": None,
     "cluster_id": None,
     "is_active": True,
+    "infinite_invite_link": None,
     "settings": None,
 }
 
@@ -97,6 +99,7 @@ class ChatCache(BaseCacheManager):
                     chat_type=row.chat_type,
                     cluster_id=(row.cluster_id if hasattr(row, "cluster_id") else None),  # type: ignore
                     is_active=row.is_active,
+                    infinite_invite_link=row.infinite_invite_link,
                     settings=row.settings,
                     created_at=row.created_at,
                 )
@@ -120,6 +123,7 @@ class ChatCache(BaseCacheManager):
                 chat_type=model.chat_type,
                 cluster_id=(model.cluster_id if hasattr(model, "cluster_id") else None),  # type: ignore
                 is_active=model.is_active,
+                infinite_invite_link=model.infinite_invite_link,
                 settings=model.settings,
                 created_at=model.created_at,
             )
@@ -200,6 +204,7 @@ class ChatCache(BaseCacheManager):
                             "chat_type",
                             "cluster_id",
                             "is_active",
+                            "infinite_invite_link",
                             "settings",
                         ):
                             val = getattr(cached, field)
@@ -233,6 +238,7 @@ class ChatCache(BaseCacheManager):
                             "chat_type",
                             "cluster_id",
                             "is_active",
+                            "infinite_invite_link",
                             "settings",
                         ],
                         batch_size=batch_size,

@@ -16,8 +16,7 @@ class CallbackInitiatorMiddleware(BaseMiddleware):
             if len(parts) > 1:
                 try:
                     initiator_id = int(parts[1])
-                    if event.callback_query.from_user.id != initiator_id:
-                        await event.callback_query.answer()
+                    if event.callback_query.from_user.id != initiator_id and initiator_id != -1:
                         return
                 except (ValueError, IndexError):
                     pass

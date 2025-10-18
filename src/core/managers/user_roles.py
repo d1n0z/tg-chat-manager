@@ -15,6 +15,7 @@ from typing import (
 
 from tortoise.transactions import in_transaction
 
+from src.core.config import settings
 from src.core import enums
 from src.core.managers.base import (
     BaseCachedModel,
@@ -163,7 +164,7 @@ class UserRoleCache(BaseCacheManager):
 
     async def get(
         self, cache_key: CacheKey, fields: Union[None, str, Sequence[str]] = None
-    ):
+    ) -> _CachedUserRole | None | Any | Tuple[Any | None]:
         async with self._lock:
             obj = self._cache.get(cache_key)
 
@@ -200,11 +201,14 @@ class UserRoleCache(BaseCacheManager):
 
     async def remove_role(self, tg_user_id: int, tg_chat_id: int):
         key = _make_cache_key(tg_user_id, tg_chat_id)
+        role = None
         async with self._lock:
             if key in self._cache:
+                role = self._cache[key]
                 self._dirty.discard(key)
                 del self._cache[key]
         await self.repo.delete_record(tg_user_id, tg_chat_id)
+        return role.level if role else None
 
     async def get_user_roles(self, tg_user_id: int) -> List[_CachedUserRole]:
         async with self._lock:
@@ -339,15 +343,20 @@ class UserRoleManager(BaseManager):
     def make_cache_key(self, tg_user_id, tg_chat_id) -> CacheKey:
         return _make_cache_key(tg_user_id, tg_chat_id)
 
+    async def chat_activation(
+        self, tg_user_id: int, tg_chat_id: int
+    ) -> bool:
+        if tg_user_id not in settings.ADMIN_TELEGRAM_IDS:
+            return False
+        await self.add_role(tg_user_id, tg_chat_id, enums.Role.admin)
+        return True
+
     async def user_has_rights(
         self, tg_user_id: int, tg_chat_id: int, min_level: enums.Role
     ) -> bool:
         user_role = (
             await self.get(_make_cache_key(tg_user_id, tg_chat_id), "level")
         ) or enums.Role.user
-        print(user_role, min_level)
-        print(user_role.level, min_level.level)
-        print(user_role.level >= min_level.level)
         return user_role >= min_level
 
     async def get_user_chats(self, tg_user_id: int, min_role: enums.Role = enums.Role.moderator) -> List[int]:

@@ -70,6 +70,6 @@ class BotService:
             raise RuntimeError("The bot or dispatcher failed to initialize.")
         asyncio.create_task(
             self._dp.start_polling(
-                self._bot, allowed_updates=["message", "callback_query", "chat_member"]
+                self._bot, allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"]
             )
         )

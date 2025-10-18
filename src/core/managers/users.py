@@ -1,5 +1,6 @@
 import copy
 from dataclasses import dataclass
+from datetime import datetime
 from typing import (
     Any,
     Dict,
@@ -32,6 +33,7 @@ class _CachedUser(BaseCachedModel):
     last_name: Optional[str]
     is_bot: bool
     is_owner: bool
+    banned_until: Optional[datetime]
     meta: Optional[dict]
     created_at: Any
     last_seen: Optional[Any]
@@ -48,6 +50,7 @@ DEFAULT_USER = {
     "last_name": None,
     "is_bot": False,
     "is_owner": False,
+    "banned_until": None,
     "meta": None,
     "last_seen": None,
 }
@@ -102,6 +105,7 @@ class UserCache(BaseCacheManager):
                     last_name=row.last_name,
                     is_bot=row.is_bot,
                     is_owner=row.is_owner,
+                    banned_until=row.banned_until,
                     meta=row.meta,
                     created_at=row.created_at,
                     last_seen=row.last_seen,
@@ -112,13 +116,13 @@ class UserCache(BaseCacheManager):
 
     async def _ensure_cached(
         self, tg_user_id: int, initial_data: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ):
         async with self._lock:
             if tg_user_id in self._cache:
-                return False
+                return self._cache[tg_user_id]
 
         defaults = initial_data or {}
-        model, created = await self.repo.ensure_record(tg_user_id, defaults=defaults)
+        model, _ = await self.repo.ensure_record(tg_user_id, defaults=defaults)
         async with self._lock:
             self._cache[tg_user_id] = _CachedUser(
                 id=model.id,
@@ -128,13 +132,14 @@ class UserCache(BaseCacheManager):
                 last_name=model.last_name,
                 is_bot=model.is_bot,
                 is_owner=model.is_owner,
+                banned_until=model.banned_until,
                 meta=model.meta,
                 created_at=model.created_at,
                 last_seen=model.last_seen,
             )
             if model.id:
                 self._db_id_index[model.id] = model.tg_user_id
-        return created
+        return model
 
     @overload
     async def get(self, cache_key: CacheKey, fields: None = None) -> Any: ...
@@ -218,6 +223,7 @@ class UserCache(BaseCacheManager):
                             "last_name",
                             "is_bot",
                             "is_owner",
+                            "banned_until",
                             "meta",
                             "last_seen",
                         ):
@@ -239,6 +245,7 @@ class UserCache(BaseCacheManager):
                                 last_name=cached.last_name,
                                 is_bot=cached.is_bot,
                                 is_owner=cached.is_owner,
+                                banned_until=cached.banned_until,
                                 meta=cached.meta,
                                 last_seen=cached.last_seen,
                             )
@@ -253,6 +260,7 @@ class UserCache(BaseCacheManager):
                             "last_name",
                             "is_bot",
                             "is_owner",
+                            "banned_until",
                             "meta",
                             "last_seen",
                         ],
@@ -317,7 +325,7 @@ class UserManager(BaseManager):
 
     async def is_owner(self, tg_user_id: int) -> bool:
         is_owner = await self.cache.get(tg_user_id, "is_owner")
-        if not is_owner and tg_user_id in settings.ADMIN_TELEGRAM_IDS:
+        if not is_owner and tg_user_id in settings.OWNER_TELEGRAM_IDS:
             await self.set_owner(tg_user_id, True)
             return True
         return is_owner or False

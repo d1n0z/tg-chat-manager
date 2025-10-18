@@ -51,5 +51,6 @@ async def initialize():
 
 async def close():
     for manager in to_init:
+        await manager.sync()
         await manager.close()
     await pyrogram_client.stop()

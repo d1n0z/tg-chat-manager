@@ -1,4 +1,4 @@
-from aiogram import F, Router
+from aiogram import F, Bot, Router
 from aiogram.enums import ChatType
 from aiogram.filters import CommandObject
 
@@ -11,23 +11,35 @@ from src.core import enums, managers
 router = Router()
 
 
-async def _prepare_nick_list(chat_id: int, page: int, bot, bot_chat_id: int):
+async def _prepare_nick_list(
+    chat_id: int, page: int, bot: Bot, bot_chat_id: int, no_nick_list
+):
     nicks = await managers.nicks.get_chat_nicks(chat_id)
-    nick_list_data = []
-    for nick_obj in nicks:
-        user_name = await managers.users.get_name(nick_obj.tg_user_id)
-        nick_list_data.append((nick_obj.nick, user_name or str(nick_obj.tg_user_id)))
+    if no_nick_list:
+        have_nicks = [i.tg_user_id for i in nicks]
+        list_data = [
+            ("", await get_user_display(user.user.id, bot, bot_chat_id))
+            async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
+            if user.user.id not in have_nicks and not user.user.is_bot
+        ]
+    else:
+        list_data = [
+            (
+                f" | {nick_obj.nick}",
+                await get_user_display(nick_obj.tg_user_id, bot, bot_chat_id),
+            )
+            for nick_obj in nicks
+        ]
 
     per_page = 25
-    total_pages = (len(nick_list_data) - 1) // per_page if nick_list_data else 0
-    page_nicks = nick_list_data[page * per_page : (page + 1) * per_page]
+    total_pages = (len(list_data) - 1) // per_page if list_data else 0
+    page_data = list_data[page * per_page : (page + 1) * per_page]
 
     results = []
-    for k, (nick_str, tg_user_id) in enumerate(page_nicks, start=(page * per_page) + 1):
-        username = await get_user_display(tg_user_id, bot, bot_chat_id)
-        results.append(f"[{k}]. Ник: {nick_str} | {username}")
+    for k, (nick_str, username) in enumerate(page_data, start=(page * per_page) + 1):
+        results.append(f"[{k}]. {username}{nick_str}")
 
-    return len(nick_list_data), results, page, total_pages
+    return len(list_data), results, page, total_pages
 
 
 @router.message(
@@ -86,14 +98,25 @@ async def get_by_nick(message: Message, command: CommandObject):
     if not nick_records:
         return await message.answer(f"Пользователи с ником '{nick}' не найдены.")
 
+    per_page = 25
+    total_pages = (len(nick_records) - 1) // per_page if nick_records else 0
+    page_records = nick_records[:per_page]
+
     results = []
-    for nick_str, tg_user_id in nick_records[:10]:
-        username = await get_user_display(tg_user_id, message.bot, message.chat.id)
-        results.append(f"Ник: {nick_str} | {username}")
+    for nick_str, tg_user_id in page_records:
+        username = await get_user_display(
+            tg_user_id, message.bot, message.chat.id, need_a_tag=True
+        )
+        results.append(f"{nick_str} | {username}")
 
     return await message.answer(
-        f"Найдено: {len(nick_records)}\n\n"
-        + "\n".join([f"[{k}]. {i}" for k, i in enumerate(results, start=1)])
+        f"<b>Найдено: {len(nick_records)}</b>\n\n"
+        + "\n".join([f"[{k}]. {i}" for k, i in enumerate(results, start=1)]),
+        reply_markup=keyboards.gbynick_paginate(
+            message.from_user.id, 0, total_pages, message.chat.id, nick
+        )
+        if total_pages > 0
+        else None,
     )
 
 
@@ -103,7 +126,11 @@ async def get_by_nick(message: Message, command: CommandObject):
     RoleFilter(enums.Role.moderator),
 )
 async def get_nick(message: Message, command: CommandObject):
-    if message.reply_to_message and message.reply_to_message.from_user:
+    if (
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and not message.reply_to_message.is_topic_message
+    ):
         target_user_id = message.reply_to_message.from_user.id
     elif command.args:
         username = command.args.lstrip("@")
@@ -136,13 +163,13 @@ async def nick_list(message: Message, command: CommandObject):
         return await message.answer("В этом чате нет пользователей с никами.")
 
     total, results, page, total_pages = await _prepare_nick_list(
-        message.chat.id, 0, message.bot, message.chat.id
+        message.chat.id, 0, message.bot, message.chat.id, False
     )
 
     return await message.answer(
         f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
         reply_markup=keyboards.nick_list_paginate(
-            message.from_user.id, page, total_pages, message.chat.id
+            message.from_user.id, page, total_pages, message.chat.id, False
         ),
     )
 
@@ -152,14 +179,53 @@ async def nick_list_page(
     query: CallbackQuery, callback_data: callbackdata.NickListPaginate
 ):
     total, results, page, total_pages = await _prepare_nick_list(
-        callback_data.chat_id, callback_data.page, query.bot, query.message.chat.id
+        callback_data.chat_id, callback_data.page, query.bot, query.message.chat.id, callback_data.no_nick_mode
     )
 
     await query.message.edit_text(
         f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
         reply_markup=keyboards.nick_list_paginate(
-            query.from_user.id, page, total_pages, callback_data.chat_id
+            query.from_user.id, page, total_pages, callback_data.chat_id, callback_data.no_nick_mode
         ),
+    )
+
+
+@router.callback_query(callbackdata.GByNickPaginate.filter())
+async def gbynick_page(
+    query: CallbackQuery, callback_data: callbackdata.GByNickPaginate
+):
+    nick_records = await managers.nicks.get_by_nick(
+        callback_data.chat_id, callback_data.nick
+    )
+    if not nick_records:
+        return await query.answer("Пользователи не найдены.", show_alert=True)
+
+    per_page = 25
+    total_pages = (len(nick_records) - 1) // per_page if nick_records else 0
+    page = callback_data.page
+    page_records = nick_records[page * per_page : (page + 1) * per_page]
+
+    results = []
+    for nick_str, tg_user_id in page_records:
+        username = await get_user_display(
+            tg_user_id, query.bot, query.message.chat.id, need_a_tag=True
+        )
+        results.append(f"{nick_str} | {username}")
+
+    await query.message.edit_text(
+        f"<b>Найдено: {len(nick_records)}</b>\n\n"
+        + "\n".join(
+            [f"[{k}]. {i}" for k, i in enumerate(results, start=(page * per_page) + 1)]
+        ),
+        reply_markup=keyboards.gbynick_paginate(
+            query.from_user.id,
+            page,
+            total_pages,
+            callback_data.chat_id,
+            callback_data.nick,
+        )
+        if total_pages > 0
+        else None,
     )
 
 
@@ -183,7 +249,7 @@ async def staff_list(message: Message, command: CommandObject):
     for level in sorted(by_role.keys(), key=lambda x: x.level, reverse=True):
         text += f"<b>{level.value.title()}:</b>\n"
         for tg_user_id in by_role[level]:
-            username = await get_user_display(tg_user_id, message.bot, message.chat.id)
+            username = await get_user_display(tg_user_id, message.bot, message.chat.id, need_a_tag=True, nick_if_has=True)
             text += f"  • {username}\n"
         text += "\n"
 

@@ -10,8 +10,9 @@ from aiogram.exceptions import TelegramBadRequest
 from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
-from src.bot.utils import get_chat_info
+from src.bot.utils import get_chat_info, get_user_display
 from src.core import enums, managers
+from src.core.config import settings
 
 
 async def answer_to(
@@ -36,16 +37,47 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     )
 
 
-@router.message(Command("help"), F.chat.type == ChatType.PRIVATE)
+@router.message(Command("help"), F.chat.type.in_((ChatType.PRIVATE, ChatType.GROUP, ChatType.SUPERGROUP)))
 @router.callback_query(F.data == "command_help")
 async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
     await answer_to(
         message_or_callback_querry,
-        text="""Пользователь: /id, /virus.\n
-Модератор: /clear, /gbynick, /gnick, /nlist, /staff.\n
-Старший модератор: /mute, /unmute, /pin, /unpin, /setrole, /removerole, /snick, /rnick.\n
-Администратор: /kick, /gkick, /gban, /gunban, /unban, /words, /news, /cluster, /setwelcome, /getwelcome, /resetwelcome.""",
-        reply_markup=keyboards.help(message_or_callback_querry.from_user.id),
+        text="""🤖 BR | Chat Manager — ваш помощник для управления чатами!\n
+📜 <b>Команды пользователя:</b>
+/id @username — Telegram ID
+/help — Список команд
+
+👮 <b>Модератор:</b>
+/clear — Удалить сообщение
+/gbynick [ник] — Найти по нику
+/gnick @username — Показать ник
+/nlist — Список ников
+/staff — Список ролей
+
+🛡 <b>Старший модератор:</b>
+/kick @username — Кик
+/mute @username [время] — Замутить
+/unmute @username — Размутить
+/pin — Закрепить
+/unpin — Открепить
+/setrole — Выдать роль
+/removerole — Убрать роль
+/snick @username [ник] — Установить ник
+/rnick @username — Удалить ник
+/unban @username — Разбанить
+/ban @username — Заблокировать
+
+👑 <b>Администратор:</b>
+/gkick @username — Глобальный кик
+/gban @username [причина] — Глобальный бан
+/gunban @username — Снять бан
+/words — Фильтр слов
+/news [текст] — Рассылка
+/cluster [create|add|remove|list] — Управление кластерами
+/setwelcome — Настроить приветствие
+/getwelcome — Показать приветствие
+/resetwelcome — Сбросить приветствие""",
+        reply_markup=keyboards.help(message_or_callback_querry.from_user.id) if isinstance(message_or_callback_querry, AiogramCallbackQuery) else None,
     )
 
 
@@ -68,7 +100,7 @@ async def all_chats(
     page_chats = chat_names[page * per_page : (page + 1) * per_page]
 
     await query.message.edit_text(
-        text="Выберите чат:",
+        text=f"<b>Для вас доступно {len(chat_names)} чатов.</b>\nВыберите нужный чат:",
         reply_markup=keyboards.chats_paginate(
             query.from_user.id, page_chats, page, total_pages
         ),
@@ -93,7 +125,7 @@ async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSe
 
     await query.message.edit_text(
         text=await get_chat_info(query.bot, tg_chat_id, invite_url),
-        reply_markup=keyboards.chat_card(query.from_user.id, tg_chat_id, invite_url),
+        reply_markup=keyboards.chat_card(query.from_user.id, tg_chat_id, invite_url, infinite_invite_url=await managers.chats.get(tg_chat_id, "infinite_invite_link")),
     )
 
 
@@ -132,11 +164,21 @@ async def generate_invite(
             expires_at=expires_at,
             single_use=True,
         )
+        await query.bot.send_message(
+            settings.logs.chat_id,
+            f"""#link
+➡️ Новое приглашение от {await get_user_display(query.from_user.id, query.bot, query.message.chat.id, need_a_tag=True)}
+ℹ️ Чат: {(await query.bot.get_chat(tg_chat_id)).title}
+ℹ️ Ссылка: {invite_link.invite_link}
+ℹ️ Дата: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}""",
+            message_thread_id=settings.logs.invites_thread_id,
+            reply_markup=keyboards.join(0, invite_link.invite_link),
+        )
 
         await query.message.edit_text(
             text=await get_chat_info(query.bot, tg_chat_id, invite_link.invite_link),
             reply_markup=keyboards.chat_card(
-                query.from_user.id, tg_chat_id, invite_link.invite_link
+                query.from_user.id, tg_chat_id, invite_link.invite_link, infinite_invite_url=await managers.chats.get(tg_chat_id, "infinite_invite_link")
             ),
         )
     except Exception as e:

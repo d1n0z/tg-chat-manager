@@ -162,13 +162,24 @@ class NickCache(BaseCacheManager):
         key = _make_cache_key(tg_user_id, tg_chat_id)
         async with self._lock:
             if key in self._cache:
+                nick = self._cache[key]
                 self._dirty.discard(key)
                 del self._cache[key]
+            else:
+                nick = None
         await self.repo.delete_record(tg_user_id, tg_chat_id)
+        return nick
 
     async def get_user_nicks(self, tg_user_id: int) -> List[_CachedNick]:
         async with self._lock:
             return [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == tg_user_id]
+
+    async def get_user_nick(self, tg_user_id: int, tg_chat_id: int) -> Optional[_CachedNick]:
+        async with self._lock:
+            nicks = [copy.deepcopy(v) for k, v in self._cache.items() if k[0] == tg_user_id and k[1] == tg_chat_id]
+        if nicks:
+            return nicks[0]
+        return None
 
     async def get_chat_nicks(self, tg_chat_id: int) -> List[_CachedNick]:
         async with self._lock:
@@ -275,6 +286,7 @@ class NickManager(BaseManager):
         self.add_nick = self.cache.add_nick
         self.remove_nick = self.cache.remove_nick
         self.get_user_nicks = self.cache.get_user_nicks
+        self.get_user_nick = self.cache.get_user_nick
         self.get_chat_nicks = self.cache.get_chat_nicks
     
     def make_cache_key(self, tg_user_id: int, tg_chat_id: int) -> CacheKey:

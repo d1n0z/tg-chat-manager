@@ -31,6 +31,7 @@ class Chat(Model):
         "models.Cluster", related_name="chats", null=True, on_delete=fields.CASCADE
     )
     is_active = fields.BooleanField(default=True)
+    infinite_invite_link = fields.CharField(max_length=64, null=True)
     settings = fields.JSONField(null=True)
     created_at = fields.DatetimeField(auto_now_add=True)
 
@@ -52,6 +53,7 @@ class User(Model):
     last_name = fields.CharField(max_length=128, null=True)
     is_bot = fields.BooleanField(default=False)
     is_owner = fields.BooleanField(default=False)
+    banned_until = fields.DatetimeField(null=True)
     meta = fields.JSONField(null=True)
     created_at = fields.DatetimeField(auto_now_add=True)
     last_seen = fields.DatetimeField(null=True)
