@@ -14,7 +14,6 @@ class EnsureMessageMiddleware(BaseMiddleware):
     ) -> Any:
         if event.message:
             if not event.message.bot or not event.message.from_user:
-                print(1)
                 raise CancelHandler()
         elif event.callback_query:
             if (
@@ -22,6 +21,5 @@ class EnsureMessageMiddleware(BaseMiddleware):
                 or isinstance(event.callback_query.message, InaccessibleMessage)
                 or not event.callback_query.bot
             ):
-                print(2)
                 raise CancelHandler()
         return await handler(event, data)

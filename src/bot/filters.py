@@ -1,6 +1,6 @@
 from aiogram.filters import BaseFilter, Command as AiogramCommand
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message
 
 from src.core import enums, managers
 
@@ -11,6 +11,9 @@ class RoleFilter(BaseFilter):
         self.check_is_owner = check_is_owner
 
     async def __call__(self, message: Message) -> bool:
+        print(message.chat.id)
+        print(message.from_user)
+        print(message.chat)
         if not message.from_user or not message.chat:
             return False
         user_level = await managers.user_roles.get(managers.user_roles.make_cache_key(message.from_user.id, message.chat.id), "level")

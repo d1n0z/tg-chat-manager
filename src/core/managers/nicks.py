@@ -117,7 +117,7 @@ class NickCache(BaseCacheManager):
 
     async def get(
         self, cache_key: CacheKey, fields: Union[None, str, Sequence[str]] = None
-    ):
+    ) -> _CachedNick | None | Any | Tuple[Any | None] | Tuple[None]:
         async with self._lock:
             obj = self._cache.get(cache_key)
         if fields is None:
