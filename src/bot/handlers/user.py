@@ -97,8 +97,8 @@ async def stats(message: Message, command: CommandObject):
         return await message.answer(
             f"""👤 Пользователь: {await get_user_display(user_id, message.bot, message.chat.id, need_a_tag=True)}
 📛 Ник: {nick.nick if nick else "Не установлен"}
-👑 Роль: {role.value}
-💬 Сообщений: {messages_count or 0}""",
+💬 Сообщений: {messages_count or 0}
+👑 Роль: {role.value}""",
             reply_markup=keyboards.user_stats(message.from_user.id, user_id)
             if user_id != message.from_user.id
             else None,

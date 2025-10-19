@@ -295,6 +295,7 @@ class UserCache(BaseCacheManager):
         async with self._lock:
             obj = self._cache.get(cache_key)
             if not obj:
+                await self._ensure_cached(cache_key, {"messages_count": 1})
                 return False
             obj.messages_count += 1
             self._dirty.add(cache_key)
