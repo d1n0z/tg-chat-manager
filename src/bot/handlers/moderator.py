@@ -289,7 +289,7 @@ async def mute_user(message: Message, command: CommandObject):
         message.reply_to_message
         and message.reply_to_message.from_user
         and not message.reply_to_message.is_topic_message
-        and len((command.args or '').split()) < 3
+        and len((command.args or '').split(maxsplit=2)) < 3
     ):
         target_user_id = message.reply_to_message.from_user.id
         args = command.args.split(maxsplit=1) if command.args else []
