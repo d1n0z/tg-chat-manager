@@ -23,6 +23,8 @@ class MessageLoggerMiddleware(BaseMiddleware):
                 event.message.message_id,
                 event.message.message_thread_id,
             )
+            if event.message.from_user and not event.message.from_user.is_bot:
+                await managers.users.increment_messages_count(event.message.from_user.id)
         result = await handler(event, data)
         if isinstance(result, Message) and result.chat.type in (
             ChatType.SUPERGROUP,
