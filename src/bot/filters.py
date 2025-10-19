@@ -11,9 +11,6 @@ class RoleFilter(BaseFilter):
         self.check_is_owner = check_is_owner
 
     async def __call__(self, message: Message) -> bool:
-        print(message.chat.id)
-        print(message.chat)
-        print(message.sender_chat)
         if not message.from_user or not message.chat:
             return False
         user_level = await managers.user_roles.get(managers.user_roles.make_cache_key(message.from_user.id, message.chat.id), "level")

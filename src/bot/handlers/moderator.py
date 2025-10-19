@@ -294,7 +294,6 @@ async def mute_user(message: Message, command: CommandObject):
         target_user_id = message.reply_to_message.from_user.id
         args = command.args.split(maxsplit=1) if command.args else []
         duration = parse_duration(args[0]) if args else timedelta(days=400)
-        print(1, duration)
         reason = args[1] if len(args) > 1 else None
     else:
         try:
@@ -303,11 +302,9 @@ async def mute_user(message: Message, command: CommandObject):
             args = command.args.split(maxsplit=2)
             username = args[0].lstrip("@")
             if len(args) > 1 and (duration := parse_duration(args[1])):
-                print(2, duration)
                 reason = args[2] if len(args) > 2 else None
             else:
                 duration = timedelta(days=400)
-                print(3, duration)
                 reason = args[1] if len(args) > 1 else None
         except Exception:
             return await message.answer(
