@@ -107,10 +107,10 @@ class ChatCache(BaseCacheManager):
 
     async def _ensure_cached(
         self, tg_chat_id: int, initial_data: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ) -> _CachedChat | Chat:
         async with self._lock:
             if tg_chat_id in self._cache:
-                return False
+                return self._cache[tg_chat_id]
 
         defaults = initial_data or {}
         model, created = await self.repo.ensure_record(tg_chat_id, defaults=defaults)
@@ -127,7 +127,7 @@ class ChatCache(BaseCacheManager):
                 settings=model.settings,
                 created_at=model.created_at,
             )
-        return created
+        return model
 
     @overload
     async def get(self, cache_key: CacheKey, fields: str) -> Any: ...

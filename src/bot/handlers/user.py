@@ -299,6 +299,7 @@ async def staff_list(message: Message, command: CommandObject):
                 message.chat.id,
                 need_a_tag=True,
                 nick_if_has=True,
+                no_tag=True,
             )
             staff.append(f"  • {username}\n")
         for username in sorted(staff, key=get_sort_key):

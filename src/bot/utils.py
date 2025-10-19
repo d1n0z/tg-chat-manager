@@ -1,3 +1,4 @@
+from math import e
 import re
 from datetime import timedelta
 from typing import Optional
@@ -16,31 +17,44 @@ async def get_user_display(
     member: ResultChatMemberUnion | None = None,
     need_a_tag: bool = False,
     nick_if_has: bool = False,
+    no_tag: bool = False
 ) -> str:
+    if chat_id and bot:
+        username = await get_username_by_user_id(tg_user_id, chat_id, bot)
+        if not username:
+            username = await managers.users.get(tg_user_id, "username")
+    else:
+        username = await managers.users.get(tg_user_id, "username")
+    a_href = f"tg://user?id={tg_user_id}" if not no_tag or not username else f"t.me/{username}"
     if nick_if_has and chat_id:
         nick = await managers.nicks.get_user_nick(tg_user_id, chat_id)
         if nick:
-            return f'<a href="tg://user?id={tg_user_id}">{nick.nick}</a>' if need_a_tag else f"{nick.nick}"
-    username = await managers.users.get(tg_user_id, "username")
+            return f'<a href="{a_href}">{nick.nick}</a>' if need_a_tag else f"{nick.nick}"
     if username:
-        return f"@{username}"
+        if no_tag:
+            return f'<a href="{a_href}">@\u200B{username}</a>'
+        else:
+            return f"@{username}"
     if (bot and chat_id) or member:
         try:
             if not member and bot and chat_id:
                 member = await bot.get_chat_member(chat_id, tg_user_id)
             if member:
                 if member.user.username:
-                    return f"@{member.user.username}"
+                    if no_tag:
+                        return f'<a href="{a_href}">@\u200B{member.user.username}</a>'
+                    else:
+                        return f"@{member.user.username}"
                 if member.user.full_name:
                     return (
-                        f'<a href="tg://user?id={member.user.id}">{member.user.full_name}</a>'
+                        f'<a href="{a_href}">{member.user.full_name}</a>'
                         if need_a_tag
                         else member.user.full_name
                     )
         except Exception:
             pass
     return (
-        f'<a href="tg://user?id={tg_user_id}">ID_{tg_user_id}</a>'
+        f'<a href="{a_href}">ID_{tg_user_id}</a>'
         if need_a_tag
         else f"ID_{tg_user_id}"
     )
@@ -81,6 +95,15 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
         return user.id
     except Exception:
         return None
+
+
+async def get_username_by_user_id(user_id: int, chat_id: int, bot: Bot) -> Optional[str]:
+    try:
+        user = (await bot.get_chat_member(chat_id, user_id)).user
+        return user.username
+    except Exception:
+        return
+    
 
 
 def parse_duration(duration_str: str) -> timedelta | None:

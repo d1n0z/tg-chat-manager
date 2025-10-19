@@ -36,9 +36,9 @@ async def track_invite_usage(event: ChatMemberUpdated):
         "left",
         "kicked",
     ] and event.new_chat_member.status not in ["left", "kicked"]:
-        global_cluster = await managers.clusters.repo.get_global()
+        chat = await managers.chats.ensure_chat(event.chat.id)
         if event.bot and (
-            welcome := await managers.welcome_messages.get(global_cluster.id)
+            welcome := await managers.welcome_messages.get(chat.id)
         ):
             await event.bot.send_message(
                 event.chat.id,

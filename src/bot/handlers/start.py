@@ -70,24 +70,24 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 /rnick @username — Удалить ник
 /ban @username — Заблокировать
 /unban @username — Разбанить
+/nlist — Список ников
+/pin — Закрепить
+/unpin — Открепить
 
 🛡 <b>Старший модератор:</b>
-/nlist — Список ников
 /gkick @username — Глобальный кик
 /gban @username [причина] — Глобальный бан
 /gunban @username — Снять глобальный бан
-/pin — Закрепить
-/unpin — Открепить
 /setrole — Выдать роль
 /removerole — Убрать роль
+/setwelcome — Настроить приветствие
+/getwelcome — Показать приветствие
+/resetwelcome — Сбросить приветствие
 
 👑 <b>Администратор:</b>
 /words — Фильтр слов
 /news [текст] — Рассылка
-/cluster [create|add|remove|list] — Управление кластерами
-/setwelcome — Настроить приветствие
-/getwelcome — Показать приветствие
-/resetwelcome — Сбросить приветствие""",
+/cluster [create|add|remove|list] — Управление кластерами""",
         reply_markup=keyboards.help(message_or_callback_querry.from_user.id)
         if isinstance(message_or_callback_querry, AiogramCallbackQuery)
         else None,

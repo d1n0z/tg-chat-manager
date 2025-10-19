@@ -9,7 +9,7 @@ from src.core.models import User, WelcomeMessage
 @dataclass
 class _CachedWelcome(BaseCachedModel):
     id: Optional[int]
-    cluster_id: Optional[int]
+    chat_id: Optional[int]
     text: str
     created_by_tg_id: Optional[int]
     created_at: Any
@@ -23,17 +23,17 @@ class WelcomeRepository(BaseRepository):
     async def all(self) -> List[WelcomeMessage]:
         return await WelcomeMessage.all().prefetch_related("created_by")
 
-    async def delete_record(self, cluster_id: Optional[int]):
-        await WelcomeMessage.filter(cluster_id=cluster_id).delete()
+    async def delete_record(self, chat_id: Optional[int]):
+        await WelcomeMessage.filter(chat_id=chat_id).delete()
 
-    async def ensure_record(self, cluster_id: Optional[int], **fields) -> Tuple[WelcomeMessage, bool]:
+    async def ensure_record(self, chat_id: Optional[int], **fields) -> Tuple[WelcomeMessage, bool]:
         created_by_id = None
         if "created_by_tg_id" in fields:
             created_by_tg_id = fields.pop("created_by_tg_id")
             if created_by_tg_id:
                 created_by, _ = await User.get_or_create(tg_user_id=created_by_tg_id)
                 created_by_id = created_by.id
-        return await WelcomeMessage.get_or_create(cluster_id=cluster_id, defaults={**fields, "created_by_id": created_by_id})
+        return await WelcomeMessage.get_or_create(chat_id=chat_id, defaults={**fields, "created_by_id": created_by_id})
 
 
 class WelcomeCache(BaseCacheManager):
@@ -47,9 +47,9 @@ class WelcomeCache(BaseCacheManager):
         rows = await self.repo.all()
         async with self._lock:
             for r in rows:
-                self._cache[r.cluster_id] = _CachedWelcome(  # type: ignore
+                self._cache[r.chat_id] = _CachedWelcome(  # type: ignore
                     id=r.id,
-                    cluster_id=r.cluster_id,  # type: ignore
+                    chat_id=r.chat_id,  # type: ignore
                     text=r.text,
                     created_by_tg_id=r.created_by.tg_user_id if r.created_by else None,  # type: ignore
                     created_at=r.created_at,
@@ -57,28 +57,28 @@ class WelcomeCache(BaseCacheManager):
                 )
         await super().initialize()
 
-    async def set_message(self, cluster_id: Optional[int], text: str, created_by_tg_id: Optional[int], is_default=False):
-        model, _ = await self.repo.ensure_record(cluster_id, text=text, created_by_tg_id=created_by_tg_id, is_default=is_default)
+    async def set_message(self, chat_id: Optional[int], text: str, created_by_tg_id: Optional[int], is_default=False):
+        model, _ = await self.repo.ensure_record(chat_id, text=text, created_by_tg_id=created_by_tg_id, is_default=is_default)
         async with self._lock:
-            self._cache[cluster_id] = _CachedWelcome(
+            self._cache[chat_id] = _CachedWelcome(
                 id=model.id,
-                cluster_id=cluster_id,
+                chat_id=chat_id,
                 text=text,
                 created_by_tg_id=created_by_tg_id,
                 created_at=model.created_at,
                 is_default=is_default,
             )
-            self._dirty.add(cluster_id)
+            self._dirty.add(chat_id)
 
-    async def remove_message(self, cluster_id: Optional[int]):
+    async def remove_message(self, chat_id: Optional[int]):
         async with self._lock:
-            self._cache.pop(cluster_id, None)
-            self._dirty.discard(cluster_id)
-        await self.repo.delete_record(cluster_id)
+            self._cache.pop(chat_id, None)
+            self._dirty.discard(chat_id)
+        await self.repo.delete_record(chat_id)
 
-    async def get(self, cluster_id: Optional[int]) -> Optional[_CachedWelcome]:
+    async def get(self, chat_id: Optional[int]) -> Optional[_CachedWelcome]:
         async with self._lock:
-            return copy.deepcopy(self._cache.get(cluster_id))
+            return copy.deepcopy(self._cache.get(chat_id))
 
     async def sync(self, batch_size: int = 500):
         async with self._lock:
@@ -101,7 +101,7 @@ class WelcomeCache(BaseCacheManager):
                             created_by_id=created_by_id,
                             is_default=v.is_default,
                         ),
-                        cluster_id=cid,
+                        chat_id=cid,
                     )
         except Exception:
             from loguru import logger

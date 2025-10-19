@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 import loguru
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.filters import CommandObject
 from aiogram.types import ChatPermissions
@@ -17,6 +17,60 @@ from src.core import enums, managers
 from src.core.config import settings
 
 router = Router()
+
+
+@router.message(
+    Command("pin"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.moderator),
+)
+async def pin_message(message: Message):
+    if not message.reply_to_message:
+        return await message.answer("Использование: /pin ответом на сообщение.")
+
+    await message.bot.pin_chat_message(
+        message.chat.id,
+        message.reply_to_message.message_id,
+        disable_notification=True,
+    )
+    await managers.message_pins.add_pin(
+        message.chat.id,
+        message.reply_to_message.message_id,
+        message.from_user.id,
+    )
+    invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
+    await message.bot.send_message(
+        settings.logs.chat_id,
+        f"""#pin
+➡️ Новый закреп от {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)}
+➡️ Чат: {message.chat.title}
+ℹ️ Сообщение: <a href="{message.reply_to_message.get_url()}">КЛИК</a>
+ℹ️ Дата: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}""",
+        message_thread_id=settings.logs.general_thread_id,
+        reply_markup=keyboards.join(0, invite) if invite else None,
+    )
+    return await message.answer(
+        f"{await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)} закрепил сообщение."
+    )
+
+
+@router.message(
+    Command("unpin"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.moderator),
+)
+async def unpin_message(message: Message):
+    if not message.reply_to_message:
+        return await message.answer("Использование: /unpin ответом на сообщение.")
+
+    if not await message.bot.unpin_chat_message(
+        chat_id=message.chat.id,
+        message_id=message.reply_to_message.message_id,
+    ):
+        return await message.answer("Данное сообщение не закреплено.")
+    return await message.answer(
+        f"{await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)} открепил сообщение."
+    )
 
 
 def get_sort_key(item: str) -> str:
@@ -39,6 +93,104 @@ def get_sort_key(item: str) -> str:
         return match.group(1).strip()
 
     return item
+
+
+async def _prepare_nick_list(
+    chat_id: int, page: int, bot: Bot, bot_chat_id: int, no_nick_list
+):
+    nicks = await managers.nicks.get_chat_nicks(chat_id)
+    if no_nick_list:
+        have_nicks = [i.tg_user_id for i in nicks]
+        list_data = [
+            (
+                "",
+                await get_user_display(
+                    user.user.id, bot, bot_chat_id, need_a_tag=True, no_tag=True
+                ),
+            )
+            async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
+            if user.user.id not in have_nicks and not user.user.is_bot
+        ]
+    else:
+        list_data = [
+            (
+                f" | {nick_obj.nick}",
+                await get_user_display(
+                    nick_obj.tg_user_id,
+                    bot,
+                    bot_chat_id,
+                    need_a_tag=True,
+                    no_tag=True,
+                ),
+            )
+            for nick_obj in nicks
+        ]
+
+    per_page = 25
+    total_pages = (len(list_data) - 1) // per_page if list_data else 0
+    page_data = list_data[page * per_page : (page + 1) * per_page]
+
+    results = []
+    for nick_str, username in page_data:
+        results.append(f"{username}{nick_str}")
+
+    return (
+        len(list_data),
+        [
+            f"[{k}]. {i}"
+            for k, i in enumerate(
+                sorted(results, key=get_sort_key), start=(page * per_page) + 1
+            )
+        ],
+        page,
+        total_pages,
+    )
+
+
+@router.message(
+    Command("nlist"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.moderator),
+)
+async def nick_list(message: Message, command: CommandObject):
+    nicks = await managers.nicks.get_chat_nicks(message.chat.id)
+    if not nicks:
+        return await message.answer("В этом чате нет пользователей с никами.")
+
+    total, results, page, total_pages = await _prepare_nick_list(
+        message.chat.id, 0, message.bot, message.chat.id, False
+    )
+
+    return await message.answer(
+        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
+        reply_markup=keyboards.nick_list_paginate(
+            message.from_user.id, page, total_pages, message.chat.id, False
+        ),
+    )
+
+
+@router.callback_query(callbackdata.NickListPaginate.filter())
+async def nick_list_page(
+    query: CallbackQuery, callback_data: callbackdata.NickListPaginate
+):
+    total, results, page, total_pages = await _prepare_nick_list(
+        callback_data.chat_id,
+        callback_data.page,
+        query.bot,
+        query.message.chat.id,
+        callback_data.no_nick_mode,
+    )
+
+    await query.message.edit_text(
+        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
+        reply_markup=keyboards.nick_list_paginate(
+            query.from_user.id,
+            page,
+            total_pages,
+            callback_data.chat_id,
+            callback_data.no_nick_mode,
+        ),
+    )
 
 
 @router.message(
@@ -289,7 +441,7 @@ async def mute_user(message: Message, command: CommandObject):
         message.reply_to_message
         and message.reply_to_message.from_user
         and not message.reply_to_message.is_topic_message
-        and len((command.args or '').split(maxsplit=2)) < 3
+        and len((command.args or "").split(maxsplit=2)) < 3
     ):
         target_user_id = message.reply_to_message.from_user.id
         args = command.args.split(maxsplit=1) if command.args else []
@@ -884,17 +1036,20 @@ async def unban_command(message: Message, command: CommandObject):
             message.from_user.id, message.bot, message.chat.id
         )
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
-        await message.bot.send_message(
-            settings.logs.chat_id,
-            f"""#unban
-➡️ Чат: {message.chat.title}\n
-➡️ Пользователь: {setter_name}
-➡️ Уровень прав: {initiator_role.value}
-ℹ️ Действие: Разбанил пользователя
-➡️ Цель: {username}""",
-            message_thread_id=settings.logs.punishments_thread_id,
-            reply_markup=keyboards.join(0, invite) if invite else None,
-        )
+        try:
+            await message.bot.send_message(
+                settings.logs.chat_id,
+                f"""#unban
+    ➡️ Чат: {message.chat.title}\n
+    ➡️ Пользователь: {setter_name}
+    ➡️ Уровень прав: {initiator_role.value}
+    ℹ️ Действие: Разбанил пользователя
+    ➡️ Цель: {username}""",
+                message_thread_id=settings.logs.punishments_thread_id,
+                reply_markup=keyboards.join(0, invite) if invite else None,
+            )
+        except Exception:
+            pass
         return await message.answer(
             f"{setter_name} разбанил пользователя {username} в этом чате."
         )

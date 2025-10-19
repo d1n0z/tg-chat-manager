@@ -227,8 +227,8 @@ class WelcomeMessage(Model):
     """Приветственное сообщение для кластера."""
 
     id = fields.IntField(primary_key=True)
-    cluster = fields.ForeignKeyField(
-        "models.Cluster",
+    chat = fields.ForeignKeyField(
+        "models.Chat",
         related_name="welcome_message",
         null=True,
         on_delete=fields.CASCADE,
@@ -245,7 +245,7 @@ class WelcomeMessage(Model):
 
     class Meta:
         table = "welcome_messages"
-        unique_together = (("cluster_id",),)
+        unique_together = (("chat_id",),)
 
 
 class MessagePin(Model):

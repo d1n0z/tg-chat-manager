@@ -13,7 +13,6 @@ from aiogram.filters import CommandObject
 
 from src.bot.filters import Command, RoleFilter
 from src.bot.types import Message
-from src.bot.utils import get_user_display
 from src.core import enums, managers
 
 router = Router()
@@ -103,53 +102,6 @@ async def cluster_command(message: Message, command: CommandObject):
         return await message.answer(
             "Неизвестное действие. Используйте: add, remove, list."
         )
-
-
-@router.message(
-    Command("setwelcome"),
-    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
-    RoleFilter(enums.Role.admin),
-)
-async def setwelcome_command(message: Message, command: CommandObject):
-    if not command.args:
-        return await message.answer("Использование: /setwelcome [сообщение].")
-    global_cluster = await managers.clusters.repo.get_global()
-    await managers.welcome_messages.set_message(
-        global_cluster.id, command.args, message.from_user.id
-    )
-    return await message.answer(
-        f"{await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)} успешно установил новое приветственное сообщение:\n{command.args}"
-    )
-
-
-@router.message(
-    Command("resetwelcome"),
-    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
-    RoleFilter(enums.Role.admin),
-)
-async def resetwelcome_command(message: Message, command: CommandObject):
-    global_cluster = await managers.clusters.repo.get_global()
-    if not await managers.welcome_messages.get(global_cluster.id):
-        return await message.answer("Приветственное сообщение не установлено.")
-    await managers.welcome_messages.remove_message(global_cluster.id)
-    return await message.answer(
-        f"{await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)} успешно удалил приветственное сообщение."
-    )
-
-
-@router.message(
-    Command("getwelcome"),
-    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
-    RoleFilter(enums.Role.admin),
-)
-async def getwelcome_command(message: Message, command: CommandObject):
-    global_cluster = await managers.clusters.repo.get_global()
-    welcome = await managers.welcome_messages.get(global_cluster.id)
-    if not welcome:
-        return await message.answer(
-            "Приветственное сообщение не установлено, используйте команду /setwelcome [сообщение]."
-        )
-    return await message.answer(f"Текущее приветственное сообщение:\n{welcome.text}")
 
 
 _news_cooldown = datetime.now(timezone.utc) - timedelta(minutes=10)
