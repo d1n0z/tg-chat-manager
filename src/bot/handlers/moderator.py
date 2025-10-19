@@ -101,30 +101,36 @@ async def _prepare_nick_list(
     nicks = await managers.nicks.get_chat_nicks(chat_id)
     if no_nick_list:
         have_nicks = [i.tg_user_id for i in nicks]
-        list_data = [
-            (
-                "",
-                await get_user_display(
-                    user.user.id, bot, bot_chat_id, need_a_tag=True, no_tag=True
-                ),
-            )
-            async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
-            if user.user.id not in have_nicks and not user.user.is_bot
-        ]
+        list_data = sorted(
+            [
+                (
+                    "",
+                    await get_user_display(
+                        user.user.id, bot, bot_chat_id, need_a_tag=True, no_tag=True
+                    ),
+                )
+                async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
+                if user.user.id not in have_nicks and not user.user.is_bot
+            ],
+            key=lambda i: i[1],
+        )
     else:
-        list_data = [
-            (
-                f" | {nick_obj.nick}",
-                await get_user_display(
-                    nick_obj.tg_user_id,
-                    bot,
-                    bot_chat_id,
-                    need_a_tag=True,
-                    no_tag=True,
-                ),
-            )
-            for nick_obj in nicks
-        ]
+        list_data = sorted(
+            [
+                (
+                    f" | {nick_obj.nick}",
+                    await get_user_display(
+                        nick_obj.tg_user_id,
+                        bot,
+                        bot_chat_id,
+                        need_a_tag=True,
+                        no_tag=True,
+                    ),
+                )
+                for nick_obj in nicks
+            ],
+            key=lambda i: i[0][3:],
+        )
 
     per_page = 25
     total_pages = (len(list_data) - 1) // per_page if list_data else 0
@@ -136,12 +142,7 @@ async def _prepare_nick_list(
 
     return (
         len(list_data),
-        [
-            f"[{k}]. {i}"
-            for k, i in enumerate(
-                sorted(results, key=get_sort_key), start=(page * per_page) + 1
-            )
-        ],
+        [f"[{k}]. {i}" for k, i in enumerate(results, start=(page * per_page) + 1)],
         page,
         total_pages,
     )

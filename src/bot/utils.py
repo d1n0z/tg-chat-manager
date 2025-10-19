@@ -1,4 +1,3 @@
-from math import e
 import re
 from datetime import timedelta
 from typing import Optional
