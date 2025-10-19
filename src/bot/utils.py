@@ -21,9 +21,6 @@ async def get_user_display(
         nick = await managers.nicks.get_user_nick(tg_user_id, chat_id)
         if nick:
             return f'<a href="tg://user?id={tg_user_id}">{nick.nick}</a>' if need_a_tag else f"{nick.nick}"
-    username = await managers.users.get_name(tg_user_id)
-    if username:
-        return username
     username = await managers.users.get(tg_user_id, "username")
     if username:
         return f"@{username}"

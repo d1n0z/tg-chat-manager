@@ -72,8 +72,15 @@ async def activate(query: CallbackQuery):
         query.from_user.id, query.message.chat.id
     ):
         return await query.answer("🔴 У вас нет прав.", show_alert=True)
-    async for user in managers.pyrogram_client.get_chat_members(query.message.chat.id):  # type: ignore
-        await managers.user_roles.chat_activation(user.user.id, query.message.chat.id)
+    try:
+        async for user in managers.pyrogram_client.get_chat_members(
+            query.message.chat.id
+        ):  # type: ignore
+            await managers.user_roles.chat_activation(
+                user.user.id, query.message.chat.id
+            )
+    except Exception:
+        pass
 
     invite_link = await query.bot.create_chat_invite_link(
         query.message.chat.id,
@@ -95,16 +102,19 @@ async def activate(query: CallbackQuery):
     ownername = await get_user_display(
         owner.user.id, query.bot, query.message.chat.id, owner, need_a_tag=True
     )
-    await query.bot.send_message(
-        chat_id=settings.logs.chat_id,
-        message_thread_id=settings.logs.chat_activate_thread_id,
-        text=f"""➡️ Активирован чат — {username}
-➡️ Название: {(await query.bot.get_chat(query.message.chat.id)).title}
-ℹ️ Дата: {datetime.now().strftime("%Y.%m.%d %H:%M:%S")}
-ℹ️ Количество участников: {await query.bot.get_chat_member_count(query.message.chat.id)}
-ℹ️ Владелец: {ownername}""",
-        reply_markup=keyboards.join(0, invite_link.invite_link),
-    )
+    try:
+        await query.bot.send_message(
+            chat_id=settings.logs.chat_id,
+            message_thread_id=settings.logs.chat_activate_thread_id,
+            text=f"""➡️ Активирован чат — {username}
+    ➡️ Название: {(await query.bot.get_chat(query.message.chat.id)).title}
+    ℹ️ Дата: {datetime.now().strftime("%Y.%m.%d %H:%M:%S")}
+    ℹ️ Количество участников: {await query.bot.get_chat_member_count(query.message.chat.id)}
+    ℹ️ Владелец: {ownername}""",
+            reply_markup=keyboards.join(0, invite_link.invite_link),
+        )
+    except Exception:
+        pass
     await query.message.edit_text(
         text=f"Чат {query.message.chat.id} был успешно активирован администратором - {username}."
     )

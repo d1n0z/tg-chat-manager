@@ -30,10 +30,13 @@ router = Router()
 @router.message(Command("start"), F.chat.type == ChatType.PRIVATE)
 @router.callback_query(F.data == "start")
 async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
-    if not len(await managers.user_roles.get_user_roles(message_or_callback_querry.from_user.id)):
+    if not len(
+        await managers.user_roles.get_user_roles(
+            message_or_callback_querry.from_user.id
+        )
+    ):
         return await answer_to(
-            message_or_callback_querry,
-            text="У вас нет доступа к этому боту."
+            message_or_callback_querry, text="У вас нет доступа к этому боту."
         )
     return await answer_to(
         message_or_callback_querry,
@@ -42,7 +45,10 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     )
 
 
-@router.message(Command("help"), F.chat.type.in_((ChatType.PRIVATE, ChatType.GROUP, ChatType.SUPERGROUP)))
+@router.message(
+    Command("help"),
+    F.chat.type.in_((ChatType.PRIVATE, ChatType.GROUP, ChatType.SUPERGROUP)),
+)
 @router.callback_query(F.data == "command_help")
 async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
     await answer_to(
@@ -50,6 +56,7 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
         text="""🤖 BR | Chat Manager — ваш помощник для управления чатами!\n
 📜 <b>Команды пользователя:</b>
 /id @username — Telegram ID
+/staff — Список ролей
 /help — Список команд
 
 👮 <b>Модератор:</b>
@@ -57,32 +64,33 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 /gbynick [ник] — Найти по нику
 /gnick @username — Показать ник
 /nlist — Список ников
-/staff — Список ролей
-
-🛡 <b>Старший модератор:</b>
 /kick @username — Кик
 /mute @username [время] — Замутить
 /unmute @username — Размутить
+/snick @username [ник] — Установить ник
+/rnick @username — Удалить ник
+/ban @username — Заблокировать
+/unban @username — Разбанить
+
+🛡 <b>Старший модератор:</b>
+/gkick @username — Глобальный кик
+/gban @username [причина] — Глобальный бан
+/gunban @username — Снять глобальный бан
 /pin — Закрепить
 /unpin — Открепить
 /setrole — Выдать роль
 /removerole — Убрать роль
-/snick @username [ник] — Установить ник
-/rnick @username — Удалить ник
-/unban @username — Разбанить
-/ban @username — Заблокировать
 
 👑 <b>Администратор:</b>
-/gkick @username — Глобальный кик
-/gban @username [причина] — Глобальный бан
-/gunban @username — Снять бан
 /words — Фильтр слов
 /news [текст] — Рассылка
 /cluster [create|add|remove|list] — Управление кластерами
 /setwelcome — Настроить приветствие
 /getwelcome — Показать приветствие
 /resetwelcome — Сбросить приветствие""",
-        reply_markup=keyboards.help(message_or_callback_querry.from_user.id) if isinstance(message_or_callback_querry, AiogramCallbackQuery) else None,
+        reply_markup=keyboards.help(message_or_callback_querry.from_user.id)
+        if isinstance(message_or_callback_querry, AiogramCallbackQuery)
+        else None,
     )
 
 
@@ -95,7 +103,12 @@ async def all_chats(
         query.from_user.id, enums.Role.moderator
     )
     chat_names = [
-        (tg_cid, await managers.chats.get(tg_cid, "title") or (await query.bot.get_chat(tg_cid)).title or f"Chat {tg_cid}")
+        (
+            tg_cid,
+            await managers.chats.get(tg_cid, "title")
+            or (await query.bot.get_chat(tg_cid)).title
+            or f"Chat {tg_cid}",
+        )
         for tg_cid in tg_chat_ids
     ]
 
@@ -130,7 +143,14 @@ async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSe
 
     await query.message.edit_text(
         text=await get_chat_info(query.bot, tg_chat_id, invite_url),
-        reply_markup=keyboards.chat_card(query.from_user.id, tg_chat_id, invite_url, infinite_invite_url=await managers.chats.get(tg_chat_id, "infinite_invite_link")),
+        reply_markup=keyboards.chat_card(
+            query.from_user.id,
+            tg_chat_id,
+            invite_url,
+            infinite_invite_url=await managers.chats.get(
+                tg_chat_id, "infinite_invite_link"
+            ),
+        ),
     )
 
 
@@ -183,7 +203,12 @@ async def generate_invite(
         await query.message.edit_text(
             text=await get_chat_info(query.bot, tg_chat_id, invite_link.invite_link),
             reply_markup=keyboards.chat_card(
-                query.from_user.id, tg_chat_id, invite_link.invite_link, infinite_invite_url=await managers.chats.get(tg_chat_id, "infinite_invite_link")
+                query.from_user.id,
+                tg_chat_id,
+                invite_link.invite_link,
+                infinite_invite_url=await managers.chats.get(
+                    tg_chat_id, "infinite_invite_link"
+                ),
             ),
         )
     except Exception as e:

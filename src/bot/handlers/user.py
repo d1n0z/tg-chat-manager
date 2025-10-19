@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from pyrogram.errors import UsernameNotOccupied
 
+from src.bot.handlers.moderator import get_sort_key
 from src.bot import states
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import CallbackQuery, Message
@@ -218,7 +219,7 @@ async def grant_role_choice_handler(
 
 @router.message(
     lambda m: (
-        (m.text or "?").split()[0]
+        (m.text or "?").split()[0].lower()
         in (
             "mute",
             "unmute",
@@ -233,8 +234,11 @@ async def grant_role_choice_handler(
     )
 )
 async def forms(message: Message):
+    if not message.text:
+        return
+    form = f"/{message.text[0].lower()}{message.text[1:]}"
     await message.answer(
-        f"<code>/{message.text or ''}</code>\n\n📝 Форму отправил: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True, nick_if_has=True)} ({datetime.now().strftime('%d.%m.%Y %H:%M:%S')})",
+        f"<code>{form}</code>\n\n📝 Форму отправил: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True, nick_if_has=True)} ({datetime.now().strftime('%d.%m.%Y %H:%M:%S')})",
         reply_markup=keyboards.form(-1),
     )
 
@@ -266,3 +270,39 @@ async def form_accept_callback_handler(
         + "</blockquote>"
     )
     await query.message.edit_text(text=text, reply_markup=None)
+
+
+@router.message(
+    Command("staff"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    # RoleFilter(enums.Role.moderator),
+)
+async def staff_list(message: Message, command: CommandObject):
+    roles = await managers.user_roles.get_chat_roles(message.chat.id)
+    if not roles:
+        return await message.answer("В этом чате нет пользователей с ролями.")
+
+    by_role = {}
+    for role in roles:
+        if role.level not in by_role:
+            by_role[role.level] = []
+        by_role[role.level].append(role.tg_user_id)
+
+    text = "Список администрации:\n\n"
+    for level in sorted(by_role.keys(), key=lambda x: x.level, reverse=True):
+        text += f"<b>{level.value.title()}:</b>\n"
+        staff = []
+        for tg_user_id in by_role[level]:
+            username = await get_user_display(
+                tg_user_id,
+                message.bot,
+                message.chat.id,
+                need_a_tag=True,
+                nick_if_has=True,
+            )
+            staff.append(f"  • {username}\n")
+        for username in sorted(staff, key=get_sort_key):
+            text += username
+        text += "\n"
+
+    return await message.answer(text)

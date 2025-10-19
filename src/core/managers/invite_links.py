@@ -158,7 +158,7 @@ class InviteLinkCache(BaseCacheManager):
                 del self._cache[token]
         await self.repo.delete_record(token)
 
-    async def increment_usage(self, token: str):
+    async def increment_usage(self, token: str) -> bool:
         async with self._lock:
             obj = self._cache.get(token)
             if not obj:
