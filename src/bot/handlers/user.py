@@ -63,7 +63,7 @@ async def stats(message: Message, command: CommandObject):
         if (
             message.reply_to_message
             and message.reply_to_message.from_user
-            and message.reply_to_message.is_topic_message
+            and not message.reply_to_message.is_topic_message
         ):
             username = message.reply_to_message.from_user.username
             user_id = message.reply_to_message.from_user.id
