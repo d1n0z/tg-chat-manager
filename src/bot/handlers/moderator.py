@@ -76,12 +76,12 @@ async def _prepare_nick_list(
     page_data = list_data[page * per_page : (page + 1) * per_page]
 
     results = []
-    for k, (nick_str, username) in enumerate(page_data, start=(page * per_page) + 1):
-        results.append(f"[{k}]. {username}{nick_str}")
+    for nick_str, username in page_data:
+        results.append(f"{username}{nick_str}")
 
     return (
         len(list_data),
-        sorted(results, key=get_sort_key),
+        [f"[{k}]. {i}" for k, i in enumerate(sorted(results, key=get_sort_key), start=(page * per_page) + 1)],
         page,
         total_pages,
     )
