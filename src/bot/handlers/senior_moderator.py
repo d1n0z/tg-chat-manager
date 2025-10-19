@@ -1,16 +1,67 @@
 from datetime import datetime, timedelta, timezone
 
 import loguru
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
 from aiogram.filters import CommandObject
 
 from src.bot.filters import Command, RoleFilter
-from src.bot.keyboards import keyboards
-from src.bot.types import Message
+from src.bot.handlers.moderator import get_sort_key
+from src.bot.keyboards import callbackdata, keyboards
+from src.bot.types import CallbackQuery, Message
 from src.bot.utils import get_user_display, get_user_id_by_username, parse_duration
 from src.core import enums, managers
 from src.core.config import settings
+
+
+async def _prepare_nick_list(
+    chat_id: int, page: int, bot: Bot, bot_chat_id: int, no_nick_list
+):
+    nicks = await managers.nicks.get_chat_nicks(chat_id)
+    if no_nick_list:
+        have_nicks = [i.tg_user_id for i in nicks]
+        list_data = [
+            (
+                "",
+                await get_user_display(user.user.id, bot, bot_chat_id, need_a_tag=True),
+            )
+            async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
+            if user.user.id not in have_nicks and not user.user.is_bot
+        ]
+    else:
+        list_data = [
+            (
+                f" | {nick_obj.nick}",
+                await get_user_display(
+                    nick_obj.tg_user_id,
+                    bot,
+                    bot_chat_id,
+                    need_a_tag=True,
+                ),
+            )
+            for nick_obj in nicks
+        ]
+
+    per_page = 25
+    total_pages = (len(list_data) - 1) // per_page if list_data else 0
+    page_data = list_data[page * per_page : (page + 1) * per_page]
+
+    results = []
+    for nick_str, username in page_data:
+        results.append(f"{username}{nick_str}")
+
+    return (
+        len(list_data),
+        [
+            f"[{k}]. {i}"
+            for k, i in enumerate(
+                sorted(results, key=get_sort_key), start=(page * per_page) + 1
+            )
+        ],
+        page,
+        total_pages,
+    )
+
 
 router = Router()
 
@@ -564,3 +615,49 @@ async def gunban_command(message: Message, command: CommandObject):
     except Exception:
         loguru.logger.exception("admin.gunban handler exception:")
         return await message.answer("Неизвестная ошибка.")
+
+
+@router.message(
+    Command("nlist"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.senior_moderator),
+)
+async def nick_list(message: Message, command: CommandObject):
+    nicks = await managers.nicks.get_chat_nicks(message.chat.id)
+    if not nicks:
+        return await message.answer("В этом чате нет пользователей с никами.")
+
+    total, results, page, total_pages = await _prepare_nick_list(
+        message.chat.id, 0, message.bot, message.chat.id, False
+    )
+
+    return await message.answer(
+        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
+        reply_markup=keyboards.nick_list_paginate(
+            message.from_user.id, page, total_pages, message.chat.id, False
+        ),
+    )
+
+
+@router.callback_query(callbackdata.NickListPaginate.filter())
+async def nick_list_page(
+    query: CallbackQuery, callback_data: callbackdata.NickListPaginate
+):
+    total, results, page, total_pages = await _prepare_nick_list(
+        callback_data.chat_id,
+        callback_data.page,
+        query.bot,
+        query.message.chat.id,
+        callback_data.no_nick_mode,
+    )
+
+    await query.message.edit_text(
+        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
+        reply_markup=keyboards.nick_list_paginate(
+            query.from_user.id,
+            page,
+            total_pages,
+            callback_data.chat_id,
+            callback_data.no_nick_mode,
+        ),
+    )

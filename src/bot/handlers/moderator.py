@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 import loguru
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.filters import CommandObject
 from aiogram.types import ChatPermissions
@@ -39,52 +39,6 @@ def get_sort_key(item: str) -> str:
         return match.group(1).strip()
 
     return item
-
-
-async def _prepare_nick_list(
-    chat_id: int, page: int, bot: Bot, bot_chat_id: int, no_nick_list
-):
-    nicks = await managers.nicks.get_chat_nicks(chat_id)
-    if no_nick_list:
-        have_nicks = [i.tg_user_id for i in nicks]
-        list_data = [
-            (
-                "",
-                await get_user_display(
-                    user.user.id, bot, bot_chat_id, need_a_tag=True
-                ),
-            )
-            async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
-            if user.user.id not in have_nicks and not user.user.is_bot
-        ]
-    else:
-        list_data = [
-            (
-                f" | {nick_obj.nick}",
-                await get_user_display(
-                    nick_obj.tg_user_id,
-                    bot,
-                    bot_chat_id,
-                    need_a_tag=True,
-                ),
-            )
-            for nick_obj in nicks
-        ]
-
-    per_page = 25
-    total_pages = (len(list_data) - 1) // per_page if list_data else 0
-    page_data = list_data[page * per_page : (page + 1) * per_page]
-
-    results = []
-    for nick_str, username in page_data:
-        results.append(f"{username}{nick_str}")
-
-    return (
-        len(list_data),
-        [f"[{k}]. {i}" for k, i in enumerate(sorted(results, key=get_sort_key), start=(page * per_page) + 1)],
-        page,
-        total_pages,
-    )
 
 
 @router.message(
@@ -195,52 +149,6 @@ async def get_nick(message: Message, command: CommandObject):
         return await message.answer(f"У пользователя {username} нет ника.")
 
     return await message.answer(f"Ник пользователя {username}: <code>{nick}</code>.")
-
-
-@router.message(
-    Command("nlist"),
-    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
-    RoleFilter(enums.Role.moderator),
-)
-async def nick_list(message: Message, command: CommandObject):
-    nicks = await managers.nicks.get_chat_nicks(message.chat.id)
-    if not nicks:
-        return await message.answer("В этом чате нет пользователей с никами.")
-
-    total, results, page, total_pages = await _prepare_nick_list(
-        message.chat.id, 0, message.bot, message.chat.id, False
-    )
-
-    return await message.answer(
-        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
-        reply_markup=keyboards.nick_list_paginate(
-            message.from_user.id, page, total_pages, message.chat.id, False
-        ),
-    )
-
-
-@router.callback_query(callbackdata.NickListPaginate.filter())
-async def nick_list_page(
-    query: CallbackQuery, callback_data: callbackdata.NickListPaginate
-):
-    total, results, page, total_pages = await _prepare_nick_list(
-        callback_data.chat_id,
-        callback_data.page,
-        query.bot,
-        query.message.chat.id,
-        callback_data.no_nick_mode,
-    )
-
-    await query.message.edit_text(
-        f"Список пользователей с никами ({total}):\n\n" + "\n".join(results),
-        reply_markup=keyboards.nick_list_paginate(
-            query.from_user.id,
-            page,
-            total_pages,
-            callback_data.chat_id,
-            callback_data.no_nick_mode,
-        ),
-    )
 
 
 @router.callback_query(callbackdata.GByNickPaginate.filter())
@@ -381,10 +289,12 @@ async def mute_user(message: Message, command: CommandObject):
         message.reply_to_message
         and message.reply_to_message.from_user
         and not message.reply_to_message.is_topic_message
+        and len((command.args or '').split()) < 3
     ):
         target_user_id = message.reply_to_message.from_user.id
         args = command.args.split(maxsplit=1) if command.args else []
         duration = parse_duration(args[0]) if args else timedelta(days=400)
+        print(1, duration)
         reason = args[1] if len(args) > 1 else None
     else:
         try:
@@ -393,9 +303,11 @@ async def mute_user(message: Message, command: CommandObject):
             args = command.args.split(maxsplit=2)
             username = args[0].lstrip("@")
             if len(args) > 1 and (duration := parse_duration(args[1])):
+                print(2, duration)
                 reason = args[2] if len(args) > 2 else None
             else:
                 duration = timedelta(days=400)
+                print(3, duration)
                 reason = args[1] if len(args) > 1 else None
         except Exception:
             return await message.answer(
@@ -469,19 +381,22 @@ async def mute_user(message: Message, command: CommandObject):
     )
 
     invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
-    await message.bot.send_message(
-        settings.logs.chat_id,
-        f"""#mute
-➡️ Чат: {message.chat.title}\n
-➡️ Пользователь: {(setter := await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True))}
-➡️ Уровень прав: {initiator_role.value}
-ℹ️ Действие: Замутил пользователя
-ℹ️ Срок: {end_at_text}
-ℹ️ Причина: {reason or "Не указана"}
-➡️ Цель: {username}""",
-        message_thread_id=settings.logs.punishments_thread_id,
-        reply_markup=keyboards.join(0, invite) if invite else None,
-    )
+    try:
+        await message.bot.send_message(
+            settings.logs.chat_id,
+            f"""#mute
+    ➡️ Чат: {message.chat.title}\n
+    ➡️ Пользователь: {(setter := await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True))}
+    ➡️ Уровень прав: {initiator_role.value}
+    ℹ️ Действие: Замутил пользователя
+    ℹ️ Срок: {end_at_text}
+    ℹ️ Причина: {reason or "Не указана"}
+    ➡️ Цель: {username}""",
+            message_thread_id=settings.logs.punishments_thread_id,
+            reply_markup=keyboards.join(0, invite) if invite else None,
+        )
+    except Exception:
+        pass
     return await message.answer(
         f"{setter} замутил {username} {end_at_text}{f' по причине {reason}' if reason else ''}",
         reply_markup=keyboards.mute_actions(message.from_user.id, target_user_id, True),

@@ -63,7 +63,6 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 /clear — Удалить сообщение
 /gbynick [ник] — Найти по нику
 /gnick @username — Показать ник
-/nlist — Список ников
 /kick @username — Кик
 /mute @username [время] — Замутить
 /unmute @username — Размутить
@@ -73,6 +72,7 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
 /unban @username — Разбанить
 
 🛡 <b>Старший модератор:</b>
+/nlist — Список ников
 /gkick @username — Глобальный кик
 /gban @username [причина] — Глобальный бан
 /gunban @username — Снять глобальный бан
