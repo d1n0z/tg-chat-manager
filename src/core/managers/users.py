@@ -291,15 +291,14 @@ class UserCache(BaseCacheManager):
                 if cur.__dict__ == old_val.__dict__:
                     self._dirty.discard(tg)
                     
-    async def increment_messages_count(self, cache_key: CacheKey) -> bool:
+    async def increment_messages_count(self, cache_key: CacheKey):
         async with self._lock:
             obj = self._cache.get(cache_key)
-            if not obj:
-                await self._ensure_cached(cache_key, {"messages_count": 1})
-                return False
-            obj.messages_count += 1
-            self._dirty.add(cache_key)
-            return True
+            if obj:
+                obj.messages_count += 1
+                self._dirty.add(cache_key)
+                return
+        await self._ensure_cached(cache_key, {"messages_count": 1})
 
 
 class UserManager(BaseManager):
