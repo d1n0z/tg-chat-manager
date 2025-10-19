@@ -60,7 +60,22 @@ async def get_user_id(message: Message, command: CommandObject):
 )
 async def stats(message: Message, command: CommandObject):
     try:
-        if not command.args or not (
+        if (
+            message.reply_to_message
+            and message.reply_to_message.from_user
+            and message.reply_to_message.is_topic_message
+        ):
+            username = message.reply_to_message.from_user.username
+            user_id = message.reply_to_message.from_user.id
+        elif command.args:
+            username = command.args.lstrip("@")
+            user_id = await get_user_id_by_username(username)
+            if not user_id:
+                raise ValueError
+        else:
+            username = message.from_user.username
+            user_id = message.from_user.id
+        if user_id != message.from_user.id and not (
             (
                 await managers.user_roles.get(
                     managers.user_roles.make_cache_key(
@@ -74,11 +89,7 @@ async def stats(message: Message, command: CommandObject):
         ):
             username = message.from_user.username
             user_id = message.from_user.id
-        else:
-            username = command.args.lstrip("@")
-            user_id = await get_user_id_by_username(username)
-            if not user_id:
-                raise ValueError
+
         if (await message.bot.get_chat_member(message.chat.id, user_id)).status not in [
             ChatMemberStatus.ADMINISTRATOR,
             ChatMemberStatus.CREATOR,
