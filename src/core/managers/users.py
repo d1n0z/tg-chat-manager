@@ -34,6 +34,7 @@ class _CachedUser(BaseCachedModel):
     is_bot: bool
     is_owner: bool
     banned_until: Optional[datetime]
+    messages_count: int
     meta: Optional[dict]
     created_at: Any
     last_seen: Optional[Any]
@@ -51,6 +52,7 @@ DEFAULT_USER = {
     "is_bot": False,
     "is_owner": False,
     "banned_until": None,
+    "messages_count": 0,
     "meta": None,
     "last_seen": None,
 }
@@ -106,6 +108,7 @@ class UserCache(BaseCacheManager):
                     is_bot=row.is_bot,
                     is_owner=row.is_owner,
                     banned_until=row.banned_until,
+                    messages_count=row.messages_count,
                     meta=row.meta,
                     created_at=row.created_at,
                     last_seen=row.last_seen,
@@ -133,6 +136,7 @@ class UserCache(BaseCacheManager):
                 is_bot=model.is_bot,
                 is_owner=model.is_owner,
                 banned_until=model.banned_until,
+                messages_count=model.messages_count,
                 meta=model.meta,
                 created_at=model.created_at,
                 last_seen=model.last_seen,
@@ -224,6 +228,7 @@ class UserCache(BaseCacheManager):
                             "is_bot",
                             "is_owner",
                             "banned_until",
+                            "messages_count",
                             "meta",
                             "last_seen",
                         ):
@@ -246,6 +251,7 @@ class UserCache(BaseCacheManager):
                                 is_bot=cached.is_bot,
                                 is_owner=cached.is_owner,
                                 banned_until=cached.banned_until,
+                                messages_count=cached.messages_count,
                                 meta=cached.meta,
                                 last_seen=cached.last_seen,
                             )
@@ -261,6 +267,7 @@ class UserCache(BaseCacheManager):
                             "is_bot",
                             "is_owner",
                             "banned_until",
+                            "messages_count",
                             "meta",
                             "last_seen",
                         ],

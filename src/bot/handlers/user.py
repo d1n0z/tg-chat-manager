@@ -85,6 +85,7 @@ async def stats(message: Message, command: CommandObject):
             ChatMemberStatus.MEMBER,
         ]:
             return await message.answer("Пользователь не является участником чата.")
+        messages_count = await managers.users.get(user_id, "messages_count")
         nick = await managers.nicks.get_user_nick(user_id, message.chat.id)
         role = (
             await managers.user_roles.get(
@@ -96,7 +97,8 @@ async def stats(message: Message, command: CommandObject):
         return await message.answer(
             f"""👤 Пользователь: {await get_user_display(user_id, message.bot, message.chat.id, need_a_tag=True)}
 📛 Ник: {nick.nick if nick else "Не установлен"}
-👑 Роль: {role.value}""",
+👑 Роль: {role.value}
+💬 Сообщений: {messages_count or 0}""",
             reply_markup=keyboards.user_stats(message.from_user.id, user_id)
             if user_id != message.from_user.id
             else None,

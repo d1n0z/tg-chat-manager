@@ -54,6 +54,7 @@ class User(Model):
     is_bot = fields.BooleanField(default=False)
     is_owner = fields.BooleanField(default=False)
     banned_until = fields.DatetimeField(null=True)
+    messages_count = fields.IntField(default=0)
     meta = fields.JSONField(null=True)
     created_at = fields.DatetimeField(auto_now_add=True)
     last_seen = fields.DatetimeField(null=True)
