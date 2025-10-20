@@ -809,6 +809,9 @@ async def kick_command(
 
         await message_or_query.bot.ban_chat_member(message.chat.id, user_id)
         await message_or_query.bot.unban_chat_member(message.chat.id, user_id)
+        
+        await managers.nicks.remove_nick(user_id, message.chat.id)
+        await managers.user_roles.remove_role(user_id, message.chat.id)
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
         await message_or_query.bot.send_message(
             settings.logs.chat_id,
@@ -943,6 +946,8 @@ async def ban_command(
                 active=True,
                 auto_unban=True,
             )
+            await managers.nicks.remove_nick(target_user_id, message.chat.id)
+            await managers.user_roles.remove_role(target_user_id, message.chat.id)
         except Exception:
             pass
 
@@ -1124,6 +1129,8 @@ async def gkick_command(message: Message, command: CommandObject):
                     await message.bot.ban_chat_member(tg_chat_id, user_id)
                     await message.bot.unban_chat_member(tg_chat_id, user_id)
                     kicked.append(tg_chat_id)
+                    await managers.nicks.remove_nick(user_id, tg_chat_id)
+                    await managers.user_roles.remove_role(user_id, tg_chat_id)
             except Exception:
                 pass
 
