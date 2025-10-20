@@ -1057,3 +1057,103 @@ async def unban_command(message: Message, command: CommandObject):
     except Exception:
         loguru.logger.exception("admin.unban handler exception:")
         return await message.answer("Неизвестная ошибка.")
+
+
+@router.message(
+    Command("gkick"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.moderator),
+)
+async def gkick_command(message: Message, command: CommandObject):
+    cluster_id = await managers.chats.get(message.chat.id, "cluster_id")
+    if not cluster_id:
+        return await message.answer("Чат не в кластере.")
+
+    if (
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and not message.reply_to_message.is_topic_message
+    ):
+        user_id = message.reply_to_message.from_user.id
+        username = message.reply_to_message.from_user.username
+        reason = command.args or None
+    elif command.args:
+        args = command.args.split(maxsplit=1)
+        username = args[0].lstrip("@")
+        reason = args[1] if len(args) > 1 else None
+        user_id = await get_user_id_by_username(username)
+        if not user_id:
+            return await message.answer("Пользователь не найден.")
+    else:
+        return await message.answer("Использование: /gkick @username")
+
+    try:
+        tg_chat_ids = await managers.clusters.get_chats(cluster_id)
+        kicked = []
+        for tg_chat_id in tg_chat_ids:
+            try:
+                initiator_role = (
+                    await managers.user_roles.get(
+                        managers.user_roles.make_cache_key(
+                            message.from_user.id, tg_chat_id
+                        ),
+                        "level",
+                    )
+                    or enums.Role.user
+                )
+                target_role = (
+                    await managers.user_roles.get(
+                        managers.user_roles.make_cache_key(user_id, tg_chat_id), "level"
+                    )
+                    or enums.Role.user
+                )
+
+                if target_role >= initiator_role:
+                    continue
+
+                member = await message.bot.get_chat_member(tg_chat_id, user_id)
+                bot_member = await message.bot.get_chat_member(
+                    tg_chat_id, message.bot.id
+                )
+                if (
+                    bot_member.status in ("creator", "administrator")
+                    and hasattr(bot_member, "can_restrict_members")
+                    and bot_member.can_restrict_members  # type: ignore
+                    and member.status == "member"
+                ):
+                    await message.bot.ban_chat_member(tg_chat_id, user_id)
+                    await message.bot.unban_chat_member(tg_chat_id, user_id)
+                    kicked.append(tg_chat_id)
+            except Exception:
+                pass
+
+        kicked = [
+            (await message.bot.get_chat(tg_chat_id)).title for tg_chat_id in kicked
+        ]
+        kicked = "\n".join(
+            [f"{k}. {i}" for k, i in enumerate(kicked[:25], start=1) if i]
+        )
+        if kicked:
+            invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
+            await message.bot.send_message(
+                chat_id=settings.logs.chat_id,
+                text=f"""#gkick
+    ➡️ Из чата: {message.chat.title}\n
+    ➡️ Пользователь: {(setter := await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True))}
+    ➡️ Уровень прав: {initiator_role.value}
+    ℹ️ Действие: Исключил из чата
+    ℹ️ Причина: {reason or "Не указана"}
+    ➡️ Цель: @{username}""",
+                message_thread_id=settings.logs.punishments_thread_id,
+                reply_markup=keyboards.join(0, invite) if invite else None,
+            )
+
+            return await message.answer(
+                f"{setter} исключил глобально пользователя @{username}{f' по причине "{reason}"' if reason else ''}\n\nИсключен из чатов:\n{kicked}"
+            )
+        return await message.answer(
+            f"{'Не удалось исключить глобально пользователя' if username else 'Пользователь не найден: '} @{username}."
+        )
+    except Exception:
+        loguru.logger.exception("admin.gkick handler exception:")
+        return await message.answer("Неизвестная ошибка.")

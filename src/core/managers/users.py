@@ -290,7 +290,7 @@ class UserCache(BaseCacheManager):
                     continue
                 if cur.__dict__ == old_val.__dict__:
                     self._dirty.discard(tg)
-                    
+
     async def increment_messages_count(self, cache_key: CacheKey):
         async with self._lock:
             obj = self._cache.get(cache_key)
@@ -299,6 +299,14 @@ class UserCache(BaseCacheManager):
                 self._dirty.add(cache_key)
                 return
         await self._ensure_cached(cache_key, {"messages_count": 1})
+
+    async def get_top_by(
+        self, field: str, limit: int = 10, desc: bool = True
+    ) -> List[_CachedUser]:
+        async with self._lock:
+            return sorted(
+                self._cache.values(), key=lambda x: getattr(x, field), reverse=desc
+            )[:limit]
 
 
 class UserManager(BaseManager):
@@ -313,14 +321,13 @@ class UserManager(BaseManager):
         self.remove = self.cache.remove
         self.ensure_user = self.cache._ensure_cached
         self.increment_messages_count = self.cache.increment_messages_count
+        self.get_top_by = self.cache.get_top_by
 
     async def get_name(self, tg_user_id: int) -> Optional[str]:
         first, last = await self.cache.get(tg_user_id, ("first_name", "last_name"))
         if first is None and last is None:
             return None
         return (" ".join([p for p in (first, last) if p])).strip()
-    
-
 
     async def get_by_username(self, tg_username: str) -> Optional[_CachedUser]:
         async with self._lock:

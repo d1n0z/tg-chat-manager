@@ -320,3 +320,14 @@ async def staff_list(message: Message, command: CommandObject):
         text += "\n"
 
     return await message.answer(text)
+
+
+@router.message(
+    Command("top"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+)
+async def top_list(message: Message, command: CommandObject):
+    text = "Топ пользователей по сообщениям:\n\n"
+    for k, user in enumerate(await managers.users.get_top_by("messages_count", 25), start=1):
+        text += f"{k}. {await get_user_display(user.tg_user_id, message.bot, message.chat.id, need_a_tag=True, no_tag=True)} - {user.messages_count} сообщ.\n"
+    return await message.answer(text)
