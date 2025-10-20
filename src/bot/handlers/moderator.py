@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
+from aiogram.exceptions import TelegramForbiddenError
 import loguru
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
@@ -1134,11 +1135,14 @@ async def gkick_command(message: Message, command: CommandObject):
             except Exception:
                 pass
 
-        kicked = [
-            (await message.bot.get_chat(tg_chat_id)).title for tg_chat_id in kicked
-        ]
+        kicked_titles = []
+        for tg_chat_id in kicked:
+            try:
+                kicked_titles.append((await message.bot.get_chat(tg_chat_id)).title)
+            except TelegramForbiddenError:
+                pass
         kicked = "\n".join(
-            [f"{k}. {i}" for k, i in enumerate(kicked[:25], start=1) if i]
+            [f"{k}. {i}" for k, i in enumerate(kicked_titles[:25], start=1) if i]
         )
         if kicked:
             invite = await managers.chats.get(message.chat.id, "infinite_invite_link")

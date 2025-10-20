@@ -5,7 +5,7 @@ from typing import Union
 import loguru
 from aiogram import F, Router
 from aiogram.enums import ChatType
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
@@ -102,15 +102,13 @@ async def all_chats(
     tg_chat_ids = await managers.user_roles.get_user_chats(
         query.from_user.id, enums.Role.moderator
     )
-    chat_names = [
-        (
-            tg_cid,
-            await managers.chats.get(tg_cid, "title")
-            or (await query.bot.get_chat(tg_cid)).title
-            or f"Chat {tg_cid}",
-        )
-        for tg_cid in tg_chat_ids
-    ]
+    chat_names = []
+    for tg_cid in tg_chat_ids:
+        try:
+            title = await managers.chats.get(tg_cid, "title") or (await query.bot.get_chat(tg_cid)).title or f"Chat {tg_cid}"
+        except TelegramForbiddenError:
+            pass
+        chat_names.append((tg_cid, title))
 
     page = callback_data.page if callback_data else 0
     per_page = 10

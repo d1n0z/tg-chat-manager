@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from aiogram.exceptions import TelegramForbiddenError
 import loguru
 from aiogram import F, Router
 from aiogram.enums import ChatType
@@ -362,11 +363,14 @@ async def gban_command(message: Message, command: CommandObject):
             reply_markup=keyboards.join(0, invite) if invite else None,
         )
 
-        banned = [
-            (await message.bot.get_chat(tg_chat_id)).title for tg_chat_id in banned
-        ]
+        banned_titles = []
+        for tg_chat_id in banned:
+            try:
+                banned_titles.append((await message.bot.get_chat(tg_chat_id)).title)
+            except TelegramForbiddenError:
+                pass
         banned = "\n".join(
-            [f"{k}. {i}" for k, i in enumerate(banned[:25], start=1) if i]
+            [f"{k}. {i}" for k, i in enumerate(banned_titles[:25], start=1) if i]
         )
         return await message.answer(
             f"{setter_name} заблокировал глобально пользователя @{username} {end_at_text}{f' по причине "{reason}"' if reason else ''}\n\nЗаблокирован в чатах:\n{banned}"

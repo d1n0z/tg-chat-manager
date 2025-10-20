@@ -4,6 +4,7 @@ from typing import Optional
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import ResultChatMemberUnion
 
 from src.core import managers
@@ -60,7 +61,12 @@ async def get_user_display(
 
 
 async def get_chat_title(chat_id: int, bot: Bot) -> str:
-    return (await bot.get_chat(chat_id)).title or f"ID_{chat_id}"
+    title = f"ID_{chat_id}"
+    try:
+        return (await bot.get_chat(chat_id)).title or title
+    except TelegramForbiddenError:
+        pass
+    return title
 
 
 async def get_chat_info(bot: Bot, chat_id: int, invite_url):
