@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OWNER_TELEGRAM_IDS: List[int]
     ADMIN_TELEGRAM_IDS: List[int]
+    MASSFORM_CHAT_ID: int
 
 
 settings = Settings()  # type: ignore

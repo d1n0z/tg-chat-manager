@@ -69,7 +69,7 @@ async def get_chat_title(chat_id: int, bot: Bot) -> str:
     return title
 
 
-async def get_chat_info(bot: Bot, chat_id: int, invite_url):
+async def get_chat_info(bot: Bot, chat_id: int, invite_url) -> str:
     admins = await bot.get_chat_administrators(chat_id)
     tg_owner = [i for i in admins if i.status == ChatMemberStatus.CREATOR][0]
     owner = await get_user_display(tg_owner.user.id, bot, chat_id, tg_owner)

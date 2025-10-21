@@ -15,8 +15,10 @@ from src.bot.keyboards.callbackdata import (
 
 
 class start(MagicKeyboard):
-    def __init__(self):
+    def __init__(self, user_in_massform_chat):
         self.row(self.cb("Все чаты", "all_chats"))
+        if user_in_massform_chat:
+            self.row(self.cb("Массовые формы", "mass_form_hint"))
         self.row(self.cb("Помощь", "command_help"))
 
 
@@ -175,9 +177,24 @@ class user_stats(MagicKeyboard):
         )
         if set_role:
             self.row(
-                self.cb("Модератор", UserStats(user_id=user_id, button="set_access", access_key="moderator")),
-                self.cb("Старший Модератор", UserStats(user_id=user_id, button="set_access", access_key="senior_moderator")),
-                self.cb("Администратор", UserStats(user_id=user_id, button="set_access", access_key="admin")),
+                self.cb(
+                    "Модератор",
+                    UserStats(
+                        user_id=user_id, button="set_access", access_key="moderator"
+                    ),
+                ),
+                self.cb(
+                    "Старший Модератор",
+                    UserStats(
+                        user_id=user_id,
+                        button="set_access",
+                        access_key="senior_moderator",
+                    ),
+                ),
+                self.cb(
+                    "Администратор",
+                    UserStats(user_id=user_id, button="set_access", access_key="admin"),
+                ),
             )
 
 

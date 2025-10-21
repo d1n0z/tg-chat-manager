@@ -7,8 +7,8 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from pyrogram.errors import UsernameNotOccupied
 
-from src.bot.handlers.moderator import get_sort_key
 from src.bot import states
+from src.bot.handlers.moderator import get_sort_key
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import CallbackQuery, Message
 from src.bot.utils import get_user_display, get_user_id_by_username
@@ -38,6 +38,8 @@ async def get_user_id(message: Message, command: CommandObject):
         )
 
     username = command.args.lstrip("@")
+    if "t.me/" in username:
+        username = username[username.index("t.me/") + 5 :]
 
     try:
         if not managers.pyrogram_client.is_connected:
@@ -244,14 +246,23 @@ async def grant_role_choice_handler(
             "spermban",
             "permban",
         )
-    )
+    ),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
 )
 async def forms(message: Message):
     if not message.text:
         return
     form = f"/{message.text[0].lower()}{message.text[1:]}"
+    if (server := form[form.rfind(" ") + 1 :]).isdigit():
+        server = int(server)
+        form = form[: form.rfind(" ")]
+    else:
+        server = None
+    text = f"<code>{form}</code>\n\n📝 Форму отправил: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True, nick_if_has=True)} ({datetime.now().strftime('%d.%m.%Y %H:%M:%S')})"
+    if server:
+        text += f"\n🌐 Сервер: №{server}"
     await message.answer(
-        f"<code>{form}</code>\n\n📝 Форму отправил: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True, nick_if_has=True)} ({datetime.now().strftime('%d.%m.%Y %H:%M:%S')})",
+        text,
         reply_markup=keyboards.form(-1),
     )
 
@@ -275,12 +286,16 @@ async def form_accept_callback_handler(
         if callback_data.accept
         else f"❌ Форма была отклонена пользователем {answer_by} ({date})"
     )
+    form_text, server_text = (
+        query.message.html_text.replace("\n\n", "\n").split("\n")[::-1],
+        "",
+    )
+    for line in form_text:
+        if "Сервер" in line:
+            server_text = line
+            form_text.remove(line)
     text += (
-        "\n\n"
-        + "\n<blockquote>".join(
-            query.message.html_text.replace("\n\n", "\n").split("\n")[::-1]
-        )
-        + "</blockquote>"
+        "\n\n" + "\n<blockquote>".join(form_text) + "</blockquote>" + "\n" + server_text
     )
     await query.message.edit_text(text=text, reply_markup=None)
 
@@ -328,6 +343,8 @@ async def staff_list(message: Message, command: CommandObject):
 )
 async def top_list(message: Message, command: CommandObject):
     text = "Топ пользователей по сообщениям:\n\n"
-    for k, user in enumerate(await managers.users.get_top_by("messages_count", 25), start=1):
+    for k, user in enumerate(
+        await managers.users.get_top_by("messages_count", 25), start=1
+    ):
         text += f"{k}. {await get_user_display(user.tg_user_id, message.bot, message.chat.id, need_a_tag=True, no_tag=True)} - {user.messages_count} сообщ.\n"
     return await message.answer(text)

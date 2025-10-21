@@ -3,10 +3,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Union
 
 import loguru
-from aiogram import F, Router
-from aiogram.enums import ChatType
+from aiogram import Bot, F, Router
+from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.fsm.context import FSMContext
 
+from src.bot import states
 from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
@@ -22,6 +24,19 @@ async def answer_to(
         await message_or_callback_querry.message.edit_text(**kwargs)
     else:
         return await message_or_callback_querry.answer(**kwargs)
+
+
+async def user_in_massform_chat(bot: Bot, user_id: int):
+    try:
+        return (
+            await bot.get_chat_member(settings.MASSFORM_CHAT_ID, user_id)
+        ).status in [
+            ChatMemberStatus.MEMBER,
+            ChatMemberStatus.CREATOR,
+            ChatMemberStatus.ADMINISTRATOR,
+        ]
+    except Exception:
+        return False
 
 
 router = Router()
@@ -41,7 +56,12 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     return await answer_to(
         message_or_callback_querry,
         text="Добро пожаловать.",
-        reply_markup=keyboards.start(message_or_callback_querry.from_user.id),
+        reply_markup=keyboards.start(
+            message_or_callback_querry.from_user.id,
+            await user_in_massform_chat(
+                message_or_callback_querry.bot, message_or_callback_querry.from_user.id
+            ),
+        ),
     )
 
 
@@ -51,7 +71,7 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
 )
 @router.callback_query(F.data == "command_help")
 async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
-    await answer_to(
+    return await answer_to(
         message_or_callback_querry,
         text="""🤖 BR | Chat Manager — ваш помощник для управления чатами!\n
 📜 <b>Команды пользователя:</b>
@@ -94,6 +114,71 @@ async def help(message_or_callback_querry: Union[Message, CallbackQuery]):
     )
 
 
+@router.callback_query(F.data == "mass_form_hint")
+async def mass_form_hint(callback_query: CallbackQuery):
+    return await answer_to(
+        callback_query,
+        text="⚙️ Отправьте пример формы в формате: /permban @ БОТ by I.ivanov\n⚙️ За место @ будут вписаны никнеймы игроков.",
+        reply_markup=keyboards.help(callback_query.from_user.id)
+        if isinstance(callback_query, AiogramCallbackQuery)
+        else None,
+    )
+
+
+@router.message(
+    Command(
+        "mute",
+        "unmute",
+        "ban",
+        "unban",
+        "warn",
+        "unwarn",
+        "sban",
+        "spermban",
+        "permban",
+    ),
+    F.chat.type == ChatType.PRIVATE,
+)
+async def forms(message: Message, state: FSMContext):
+    if (
+        not await user_in_massform_chat(message.bot, message.from_user.id)
+        or not message.text
+    ):
+        return
+    form = message.text
+    msg = await message.answer(
+        "⚙️ Отправьте никнеймы игроков через пробел. (Ivan_Ivanov Test_Test)"
+    )
+    await state.set_state(states.MassForm.gather_nicks)
+    await state.set_data({"form": form, "delete_message": msg})
+    return msg
+
+
+@router.message(states.MassForm.gather_nicks)
+async def massform_gather_nicks(message: Message, state: FSMContext):
+    if not message.text:
+        return
+    delete_message = (await state.get_data()).get("delete_message")
+    if delete_message:
+        await delete_message.delete()
+    if (
+        not await user_in_massform_chat(message.bot, message.from_user.id)
+        or not message.text
+    ):
+        await state.clear()
+        return
+    nicks = message.text.split()
+    form = (await state.get_data()).get("form")
+    if not form:
+        return await message.answer("Системная ошибка. Пожалуйста, попробуйте ещё раз.")
+    text = "⚙️ <b>Созданные формы:</b>\n\n"
+    for nick in nicks:
+        text += f"<code>{form.replace('@', f'{nick}')}</code>\n"
+    msg = await message.answer(text)
+    await state.clear()
+    return msg
+
+
 @router.callback_query(F.data == "all_chats")
 @router.callback_query(callbackdata.ChatsPaginate.filter())
 async def all_chats(
@@ -105,7 +190,11 @@ async def all_chats(
     chat_names = []
     for tg_cid in tg_chat_ids:
         try:
-            title = await managers.chats.get(tg_cid, "title") or (await query.bot.get_chat(tg_cid)).title or f"Chat {tg_cid}"
+            title = (
+                await managers.chats.get(tg_cid, "title")
+                or (await query.bot.get_chat(tg_cid)).title
+                or f"Chat {tg_cid}"
+            )
         except TelegramForbiddenError:
             pass
         chat_names.append((tg_cid, title))
