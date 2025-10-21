@@ -7,3 +7,7 @@ class UserStatsState(StatesGroup):
 
 class MassForm(StatesGroup):
     gather_nicks = State()
+
+
+class IPAnalytics(StatesGroup):
+    gather_ips = State()

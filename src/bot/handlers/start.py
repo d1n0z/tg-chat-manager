@@ -1,4 +1,8 @@
+import asyncio
+import json
+import re
 import secrets
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Union
 
@@ -125,6 +129,17 @@ async def mass_form_hint(callback_query: CallbackQuery):
     )
 
 
+@router.callback_query(F.data == "ip_analytics_hint")
+async def ip_analytics_hint(callback_query: CallbackQuery):
+    return await answer_to(
+        callback_query,
+        text="⚙️ Пожалуйста, введите IP-адрес или несколько через пробел.",
+        reply_markup=keyboards.help(callback_query.from_user.id)
+        if isinstance(callback_query, AiogramCallbackQuery)
+        else None,
+    )
+
+
 @router.message(
     Command(
         "mute",
@@ -177,6 +192,114 @@ async def massform_gather_nicks(message: Message, state: FSMContext):
     msg = await message.answer(text)
     await state.clear()
     return msg
+
+
+_IPV4_RE = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
+
+
+@router.message(F.text.regexp(_IPV4_RE))
+async def ip_analytics_gather(message: Message, state: FSMContext):
+    async def _fetch_ip_info_batch(ips: list[str]) -> list[dict]:
+        url = "http://ip-api.com/batch?fields=status,message,country,regionName,city,isp,as,query,zip,lat,lon,proxy,hosting,org"
+
+        data = json.dumps([{"query": ip} for ip in ips]).encode("utf-8")
+
+        def _sync():
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.load(resp)
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception:
+            return []
+
+    def _format_ip_info(info: dict, idx: int) -> str:
+        if not info or info.get("status") != "success":
+            return f"IP {idx}: {info.get('query', 'unknown')}\nОшибка получения информации\n\n"
+        vpn = (
+            "VPN используется"
+            if info.get("proxy") or info.get("hosting")
+            else "VPN не используется"
+        )
+        lines = [
+            f"IP {idx}: {info.get('query')}",
+            f"Страна: {info.get('country')}",
+            f"Регион: {info.get('regionName')}",
+            f"Город: {info.get('city')}",
+            "VPN: " + vpn,
+            "\nДополнительно:",
+            f"Провайдер: {info.get('isp')}",
+            f"Доп. инфа: {info.get('as') or info.get('org')}",
+            f"Интернет: {'Мобильный' if 'mobile' in (info.get('org') or '').lower() else 'WiFi'}",
+            (
+                "VPN не используется"
+                if not (info.get("proxy") or info.get("hosting"))
+                else "VPN используется"
+            ),
+        ]
+        return "\n".join(lines) + "\n\n"
+
+    def _distance_km(a: dict, b: dict) -> float:
+        from math import asin, cos, radians, sin, sqrt
+
+        lat1, lon1 = a.get("lat"), a.get("lon")
+        lat2, lon2 = b.get("lat"), b.get("lon")
+        if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+            return 0.0
+        lat1, lon1, lat2, lon2 = map(radians, (lat1, lon1, lat2, lon2))
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        _a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        _c = 2 * asin(sqrt(_a))
+        return 6371.0 * _c
+
+    if not message.text:
+        return
+    delete_message = (await state.get_data()).get("delete_message")
+    if delete_message:
+        try:
+            await delete_message.delete()
+        except Exception:
+            pass
+
+    if not await user_in_massform_chat(message.bot, message.from_user.id):
+        await state.clear()
+        return
+
+    ips = re.compile(_IPV4_RE).findall(message.text)
+    if not ips:
+        await state.clear()
+        return await message.answer(
+            "Не найдено корректных IPv4 адресов. Попробуйте ещё раз."
+        )
+
+    infos = await _fetch_ip_info_batch(ips)
+
+    if not infos:
+        await state.clear()
+        return await message.answer(
+            "Не удалось получить данные по IP. Попробуйте позже."
+        )
+
+    text = "⚙️ Информация о IP-адресах:\n\n"
+    for idx, info in enumerate(infos, start=1):
+        text += _format_ip_info(info, idx)
+
+    if len(infos) > 1:
+        text += "Расстояния:\n"
+        for i, a in enumerate(infos):
+            for j, b in enumerate(infos):
+                if i == j:
+                    continue
+                dist = _distance_km(a, b)
+                text += f"Расстояние между IP {a.get('query')} и {b.get('query')}: {dist:.3f} км\n"
+
+    await message.answer(text)
+    await state.clear()
+    return
 
 
 @router.callback_query(F.data == "all_chats")

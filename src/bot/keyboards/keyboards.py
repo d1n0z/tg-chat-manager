@@ -19,6 +19,7 @@ class start(MagicKeyboard):
         self.row(self.cb("Все чаты", "all_chats"))
         if user_in_massform_chat:
             self.row(self.cb("Массовые формы", "mass_form_hint"))
+            self.row(self.cb("Аналитика IP", "ip_analytics_hint"))
         self.row(self.cb("Помощь", "command_help"))
 
 
