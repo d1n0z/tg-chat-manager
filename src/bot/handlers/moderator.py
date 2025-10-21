@@ -951,6 +951,11 @@ async def ban_command(
             await managers.user_roles.remove_role(target_user_id, message.chat.id)
         except Exception:
             pass
+        try:
+            await message.bot.ban_chat_member(message.chat.id, target_user_id)
+            await message.bot.unban_chat_member(message.chat.id, target_user_id)
+        except Exception:
+            pass
 
         username = await get_user_display(
             target_user_id, message_or_query.bot, message.chat.id

@@ -319,6 +319,8 @@ async def gban_command(message: Message, command: CommandObject):
                     banned.append(tg_chat_id)
                     await managers.nicks.remove_nick(target_user_id, tg_chat_id)
                     await managers.user_roles.remove_role(target_user_id, tg_chat_id)
+                    await message.bot.ban_chat_member(message.chat.id, target_user_id)
+                    await message.bot.unban_chat_member(message.chat.id, target_user_id)
             except Exception:
                 pass
 
