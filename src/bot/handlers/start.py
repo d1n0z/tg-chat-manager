@@ -49,14 +49,13 @@ router = Router()
 @router.message(Command("start"), F.chat.type == ChatType.PRIVATE)
 @router.callback_query(F.data == "start")
 async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
+    all_chats_access = False
     if not len(
         await managers.user_roles.get_user_roles(
             message_or_callback_querry.from_user.id
         )
     ):
-        return await answer_to(
-            message_or_callback_querry, text="У вас нет доступа к этому боту."
-        )
+        all_chats_access = True
     return await answer_to(
         message_or_callback_querry,
         text="Добро пожаловать.",
@@ -64,7 +63,7 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
             message_or_callback_querry.from_user.id,
             await user_in_massform_chat(
                 message_or_callback_querry.bot, message_or_callback_querry.from_user.id
-            ),
+            ), all_chats_access
         ),
     )
 
@@ -187,9 +186,11 @@ async def massform_gather_nicks(message: Message, state: FSMContext):
     if not form:
         return await message.answer("Системная ошибка. Пожалуйста, попробуйте ещё раз.")
     text = "⚙️ <b>Созданные формы:</b>\n\n"
-    for nick in nicks:
-        text += f"<code>{form.replace('@', f'{nick}')}</code>\n"
-    msg = await message.answer(text)
+    for i in range(0, len(nicks), 100):
+        for nick in nicks[i:i + 100]:
+            text += f"<code>{form.replace('@', f'{nick}')}</code>\n"
+        msg = await message.answer(text)
+        text = ""
     await state.clear()
     return msg
 
