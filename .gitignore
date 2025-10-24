@@ -17,6 +17,7 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.github
 
 # OS generated files
 .DS_Store
