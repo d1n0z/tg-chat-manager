@@ -50,7 +50,7 @@ router = Router()
 @router.callback_query(F.data == "start")
 async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
     all_chats_access = False
-    if not len(
+    if len(
         await managers.user_roles.get_user_roles(
             message_or_callback_querry.from_user.id
         )
