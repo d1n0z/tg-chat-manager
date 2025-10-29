@@ -92,11 +92,10 @@ async def stats(message: Message, command: CommandObject):
             username = message.from_user.username
             user_id = message.from_user.id
 
-        if (await message.bot.get_chat_member(message.chat.id, user_id)).status not in [
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.CREATOR,
-            ChatMemberStatus.MEMBER,
-        ]:
+        if (await message.bot.get_chat_member(message.chat.id, user_id)).status in (
+            ChatMemberStatus.KICKED,
+            ChatMemberStatus.LEFT,
+        ):
             return await message.answer("Пользователь не является участником чата.")
         messages_count = await managers.users.get(user_id, "messages_count")
         nick = await managers.nicks.get_user_nick(user_id, message.chat.id)
