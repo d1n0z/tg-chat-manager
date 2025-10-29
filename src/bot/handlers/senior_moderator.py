@@ -63,6 +63,31 @@ async def getwelcome_command(message: Message, command: CommandObject):
     return await message.answer(f"Текущее приветственное сообщение:\n{welcome.text}")
 
 
+
+@router.message(
+    Command("silence"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.senior_moderator),
+)
+async def silence_command(message: Message, command: CommandObject):
+    chat_id = message.chat.id
+
+    if message.chat.type == ChatType.SUPERGROUP and getattr(message, "is_topic_message", False) and getattr(message, "message_thread_id", None):
+        key = f"silence_topic:{message.message_thread_id}"
+        scope = "этого топика"
+    else:
+        key = "silence_chat"
+        scope = "этого чата"
+
+    current = await managers.chat_settings.get(chat_id, key)
+    if current:
+        await managers.chat_settings.remove(chat_id, key)
+        return await message.answer(f"Режим тишины отключён для {scope}.")
+    else:
+        await managers.chat_settings.set(chat_id, key, True)
+        return await message.answer(f"Режим тишины включён для {scope}.")
+
+
 @router.message(
     Command("setrole"),
     F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),

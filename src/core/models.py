@@ -382,5 +382,24 @@ class MessageLog(Model):
         indexes = [("chat_id", "message_thread_id", "created_at")]
 
 
+class ReactionWatch(Model):
+    """Отслеживает сообщения в определенном чате на которые не была поставлена реакция в течение 24ч."""
+
+    id = fields.IntField(primary_key=True)
+    chat = fields.ForeignKeyField(
+        "models.Chat", related_name="reaction_watches", on_delete=fields.CASCADE
+    )
+    message_id = fields.BigIntField()
+    message_thread_id = fields.BigIntField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    last_notified_at = fields.DatetimeField(null=True)
+    notified_count = fields.IntField(default=0)
+    resolved = fields.BooleanField(default=False)
+
+    class Meta:
+        table = "reaction_watches"
+        indexes = [("chat_id", "message_id")]
+
+
 async def init():
     await Cluster.get_or_create(name="GLOBAL", defaults={"is_global": True})

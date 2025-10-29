@@ -5,6 +5,7 @@ from aiogram.enums import ChatType
 from aiogram.types import Message, Update
 
 from src.core import managers
+from src.core.config import settings
 
 
 class MessageLoggerMiddleware(BaseMiddleware):
@@ -14,17 +15,60 @@ class MessageLoggerMiddleware(BaseMiddleware):
         event: Update,
         data: dict[str, Any],
     ) -> Any:
-        if event.message and event.message.chat.type in (
+        if event.message:
+            chat = event.message.chat
+        elif event.message_reaction:
+            chat = event.message_reaction.chat
+        else:
+            chat = None
+
+        if chat and chat.type in (
             ChatType.SUPERGROUP,
             ChatType.GROUP,
         ):
-            await managers.message_logs.add_message(
-                event.message.chat.id,
-                event.message.message_id,
-                event.message.message_thread_id,
-            )
-            if event.message.from_user and not event.message.from_user.is_bot:
-                await managers.users.increment_messages_count(event.message.from_user.id)
+            try:
+                if event.message_reaction:
+                    if (
+                        getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
+                        and chat.id == settings.REACTION_MONITOR_CHAT_ID
+                    ):
+                        try:
+                            await managers.reaction_watches.mark_resolved(
+                                event.message_reaction.chat.id, event.message_reaction.message_id
+                            )
+                        except Exception:
+                            pass
+                    return
+            except Exception:
+                pass
+
+            if event.message:
+                await managers.message_logs.add_message(
+                    event.message.chat.id,
+                    event.message.message_id,
+                    event.message.message_thread_id,
+                )
+                try:
+                    if (
+                        getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
+                        and getattr(settings, "REACTION_MONITOR_TOPIC_ID", None)
+                        and event.message.chat.id == settings.REACTION_MONITOR_CHAT_ID
+                        and event.message.message_thread_id
+                        == settings.REACTION_MONITOR_TOPIC_ID
+                        and event.message.from_user
+                        and not event.message.from_user.is_bot
+                    ):
+                        await managers.reaction_watches.add_watch(
+                            event.message.chat.id,
+                            event.message.message_id,
+                            event.message.message_thread_id,
+                        )
+                except Exception:
+                    pass
+                if event.message.from_user and not event.message.from_user.is_bot:
+                    await managers.users.increment_messages_count(
+                        event.message.from_user.id
+                    )
         result = await handler(event, data)
         if isinstance(result, Message) and result.chat.type in (
             ChatType.SUPERGROUP,

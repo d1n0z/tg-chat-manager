@@ -14,17 +14,17 @@ from src.core.managers.message_pins import MessagePinManager
 from src.core.managers.mute import MuteManager
 from src.core.managers.news_broadcast import NewsBroadcastManager
 from src.core.managers.nicks import NickManager
+from src.core.managers.reaction_watch import ReactionWatchManager
 from src.core.managers.user_roles import UserRoleManager
 from src.core.managers.users import UserManager
 from src.core.managers.welcome_messages import WelcomeMessageManager
 from src.core.managers.word_filter import WordFilterManager
 
 to_init = [
-    clusters := ClusterManager(),
-    chats := ChatManager(),
-    users := UserManager(),
     chat_settings := ChatSettingManager(),
+    chats := ChatManager(),
     cluster_settings := ClusterSettingManager(),
+    clusters := ClusterManager(),
     global_bans := GlobalBanManager(),
     invite_links := InviteLinkManager(),
     invite_usage := InviteUsageManager(),
@@ -34,7 +34,9 @@ to_init = [
     mutes := MuteManager(),
     news_broadcasts := NewsBroadcastManager(),
     nicks := NickManager(),
+    reaction_watches := ReactionWatchManager(),
     user_roles := UserRoleManager(),
+    users := UserManager(),
     welcome_messages := WelcomeMessageManager(),
     word_filters := WordFilterManager(),
 ]

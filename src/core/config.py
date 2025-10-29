@@ -12,7 +12,9 @@ class LogsSettings(BaseSettings):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="allow")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_nested_delimiter="__", extra="allow"
+    )
 
     logs: LogsSettings
 
@@ -23,6 +25,8 @@ class Settings(BaseSettings):
     OWNER_TELEGRAM_IDS: List[int]
     ADMIN_TELEGRAM_IDS: List[int]
     MASSFORM_CHAT_ID: int
+    REACTION_MONITOR_CHAT_ID: int | None = None
+    REACTION_MONITOR_TOPIC_ID: int | None = None
 
 
 settings = Settings()  # type: ignore
