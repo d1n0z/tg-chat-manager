@@ -202,7 +202,7 @@ async def nick_list_page(
 )
 async def clear_messages(message: Message, command: CommandObject):
     message_ids = []
-    if message.reply_to_message and not message.reply_to_message.is_topic_message:
+    if message.reply_to_message:
         message_ids = [message.reply_to_message.message_id]
     elif not command.args:
         return await message.answer(
