@@ -319,9 +319,10 @@ async def all_chats(
                 or (await query.bot.get_chat(tg_cid)).title
                 or f"Chat {tg_cid}"
             )
-        except TelegramForbiddenError:
+        except Exception:
             pass
-        chat_names.append((tg_cid, title))
+        else:
+            chat_names.append((tg_cid, title))
 
     page = callback_data.page if callback_data else 0
     per_page = 10
