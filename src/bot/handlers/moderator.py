@@ -2,10 +2,10 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
-from aiogram.exceptions import TelegramForbiddenError
 import loguru
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import CommandObject
 from aiogram.types import ChatPermissions
 from aiogram.types import Message as AiogramMessage
@@ -810,7 +810,7 @@ async def kick_command(
 
         await message_or_query.bot.ban_chat_member(message.chat.id, user_id)
         await message_or_query.bot.unban_chat_member(message.chat.id, user_id)
-        
+
         await managers.nicks.remove_nick(user_id, message.chat.id)
         await managers.user_roles.remove_role(user_id, message.chat.id)
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
@@ -1112,33 +1112,31 @@ async def gkick_command(message: Message, command: CommandObject):
                     )
                     or enums.Role.user
                 )
-                target_role = (
-                    await managers.user_roles.get(
-                        managers.user_roles.make_cache_key(user_id, tg_chat_id), "level"
+            except Exception:
+                pass
+            else:
+                try:
+                    target_role = (
+                        await managers.user_roles.get(
+                            managers.user_roles.make_cache_key(user_id, tg_chat_id),
+                            "level",
+                        )
+                        or enums.Role.user
                     )
-                    or enums.Role.user
-                )
+                except Exception:
+                    target_role = enums.Role.user
 
                 if target_role >= initiator_role:
                     continue
 
-                member = await message.bot.get_chat_member(tg_chat_id, user_id)
-                bot_member = await message.bot.get_chat_member(
-                    tg_chat_id, message.bot.id
-                )
-                if (
-                    bot_member.status in ("creator", "administrator")
-                    and hasattr(bot_member, "can_restrict_members")
-                    and bot_member.can_restrict_members  # type: ignore
-                    and member.status == "member"
-                ):
+                try:
                     await message.bot.ban_chat_member(tg_chat_id, user_id)
                     await message.bot.unban_chat_member(tg_chat_id, user_id)
                     kicked.append(tg_chat_id)
                     await managers.nicks.remove_nick(user_id, tg_chat_id)
                     await managers.user_roles.remove_role(user_id, tg_chat_id)
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         kicked_titles = []
         for tg_chat_id in kicked:
