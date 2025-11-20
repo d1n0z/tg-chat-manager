@@ -375,11 +375,12 @@ class MessageLog(Model):
     )
     message_id = fields.BigIntField()
     message_thread_id = fields.BigIntField(null=True)
+    media_group_id = fields.TextField(null=True)
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
         table = "message_logs"
-        indexes = [("chat_id", "message_thread_id", "created_at")]
+        indexes = [("chat_id", "message_thread_id", "media_group_id", "created_at")]
 
 
 class ReactionWatch(Model):

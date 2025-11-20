@@ -32,12 +32,21 @@ class MessageLoggerMiddleware(BaseMiddleware):
                 and getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
                 and chat.id == settings.REACTION_MONITOR_CHAT_ID
             ):
+                message_id = event.message_reaction.message_id
+                if media_group := await managers.message_logs.get_message_media_group(chat.id, message_id):
+                    if media_group_messages := await managers.message_logs.get_media_group_messages(chat.id, media_group):
+                        for message in media_group_messages:
+                            try:
+                                await managers.reaction_watches.mark_resolved(chat.id, message)
+                            except Exception:
+                                pass
+                        return
                 try:
                     await managers.reaction_watches.mark_resolved(
-                        chat.id, event.message_reaction.message_id
+                        chat.id, message_id
                     )
                 except Exception:
-                    logger.exception("Failed to mark reaction resolved")
+                    logger.exception("Failed to mark reaction resolved:")
                 return
 
             if event.message:
@@ -76,5 +85,6 @@ class MessageLoggerMiddleware(BaseMiddleware):
                 result.chat.id,
                 result.message_id,
                 result.message_thread_id,
+                result.media_group_id,
             )
         return result
