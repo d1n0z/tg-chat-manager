@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
+from aiolimiter import AsyncLimiter
 import loguru
 from aiogram import F, Router
 from aiogram.enums import ChatType
@@ -495,6 +496,9 @@ async def gunban_command(message: Message, command: CommandObject):
         return await message.answer("Неизвестная ошибка.")
 
 
+ALL_LIMITER = AsyncLimiter(10, 1)
+
+
 @router.message(
     Command("all"),
     F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
@@ -512,23 +516,25 @@ async def all_(message: Message, command: CommandObject):
     call = [
         "".join(
             f'<a href="tg://user?id={user}">\u2060</a>'
-            for user in users[i : i + 10]
+            for user in users[i : i + 5]
             if user
         )
-        for i in range(0, len(users), 10)
+        for i in range(0, len(users), 5)
     ] or [""]
     from_name = await get_user_display(
         message.from_user.id, message.bot, message.chat.id, need_a_tag=True
     )
     rsn = f"\n💬 Причина вызова: {command.args}" if command.args else ""
-    msgs = [
-        await message.answer(
-            f"❗️ Пользователь {from_name} вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call[0]}{rsn}"
-        )
-    ]
+    async with ALL_LIMITER:
+        msgs = [
+            await message.answer(
+                f"❗️ Пользователь {from_name} вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call[0]}{rsn}"
+            )
+        ]
     if len(call) > 1:
         for i in range(1, len(call)):
-            msgs.append(await message.answer(f"{call[i]}"))
+            async with ALL_LIMITER:
+                msgs.append(await message.answer(f"{call[i]}"))
     try:
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
         await message.bot.send_message(
