@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.enums import ChatType
 from aiogram.types import Message, Update
+from loguru import logger
 
 from src.core import managers
 from src.core.config import settings
@@ -26,21 +27,18 @@ class MessageLoggerMiddleware(BaseMiddleware):
             ChatType.SUPERGROUP,
             ChatType.GROUP,
         ):
-            try:
-                if event.message_reaction:
-                    if (
-                        getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
-                        and chat.id == settings.REACTION_MONITOR_CHAT_ID
-                    ):
-                        try:
-                            await managers.reaction_watches.mark_resolved(
-                                event.message_reaction.chat.id, event.message_reaction.message_id
-                            )
-                        except Exception:
-                            pass
-                    return
-            except Exception:
-                pass
+            if (
+                event.message_reaction
+                and getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
+                and chat.id == settings.REACTION_MONITOR_CHAT_ID
+            ):
+                try:
+                    await managers.reaction_watches.mark_resolved(
+                        chat.id, event.message_reaction.message_id
+                    )
+                except Exception:
+                    logger.exception("Failed to mark reaction resolved")
+                return
 
             if event.message:
                 await managers.message_logs.add_message(
