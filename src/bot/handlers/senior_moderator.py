@@ -1,11 +1,12 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 
-from aiogram.exceptions import TelegramForbiddenError
-from aiolimiter import AsyncLimiter
 import loguru
 from aiogram import F, Router
 from aiogram.enums import ChatType
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import CommandObject
+from aiolimiter import AsyncLimiter
 
 from src.bot.filters import Command, RoleFilter
 from src.bot.keyboards import keyboards
@@ -505,6 +506,28 @@ ALL_LIMITER = AsyncLimiter(10, 1)
     RoleFilter(enums.Role.senior_moderator),
 )
 async def all_(message: Message, command: CommandObject):
+    async def send_with_retries(message, text, max_retries=5):
+        for _ in range(max_retries):
+            try:
+                return await message.answer(text)
+
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(e.retry_after + 1)
+
+            except Exception as e:
+                msg = str(e).lower()
+                if "retry after" in msg or "retry in" in msg:
+                    import re
+
+                    m = re.search(r"(\d+)", msg[msg.find("retry") :])
+                    if m:
+                        delay = int(m.group(1))
+                        await asyncio.sleep(delay + 1)
+                        continue
+                raise e
+
+        raise RuntimeError("Too many retries, giving up.")
+
     try:
         users = [
             user.user.id
@@ -512,7 +535,10 @@ async def all_(message: Message, command: CommandObject):
             if not user.user.is_bot
         ]
     except Exception:
-        users = [user.tg_user_id for user in await managers.user_roles.get_chat_roles(message.chat.id)]
+        users = [
+            user.tg_user_id
+            for user in await managers.user_roles.get_chat_roles(message.chat.id)
+        ]
     call = [
         "".join(
             f'<a href="tg://user?id={user}">\u2060</a>'
@@ -534,7 +560,7 @@ async def all_(message: Message, command: CommandObject):
     if len(call) > 1:
         for i in range(1, len(call)):
             async with ALL_LIMITER:
-                msgs.append(await message.answer(f"{call[i]}"))
+                msgs.append(await send_with_retries(message, f"{call[i]}"))
     try:
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
         await message.bot.send_message(
