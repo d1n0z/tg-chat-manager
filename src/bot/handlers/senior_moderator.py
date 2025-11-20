@@ -517,7 +517,6 @@ async def all_(message: Message, command: CommandObject):
         )
         for i in range(0, len(users), 49)
     ] or [""]
-    print(call)
     from_name = await get_user_display(
         message.from_user.id, message.bot, message.chat.id, need_a_tag=True
     )
