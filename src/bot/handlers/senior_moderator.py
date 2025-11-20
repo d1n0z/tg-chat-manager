@@ -501,20 +501,35 @@ async def gunban_command(message: Message, command: CommandObject):
     RoleFilter(enums.Role.senior_moderator),
 )
 async def all_(message: Message, command: CommandObject):
-    users = [
-        user.user.id
-        async for user in managers.pyrogram_client.get_chat_members(message.chat.id)  # type: ignore
-        if not user.user.is_bot
-    ]
-    call = "".join(
-        f'<a href="tg://user?id={user}">⁠</a>'
-        for user in users
-        if user is not None
+    try:
+        users = [
+            user.user.id
+            async for user in managers.pyrogram_client.get_chat_members(message.chat.id)  # type: ignore
+            if not user.user.is_bot
+        ]
+    except Exception:
+        users = [user.tg_user_id for user in await managers.user_roles.get_chat_roles(message.chat.id)]
+    call = [
+        "".join(
+            f'<a href="tg://user?id={user}">\u2060</a>'
+            for user in users[i : i + 49]
+            if user
+        )
+        for i in range(0, len(users), 49)
+    ] or [""]
+    print(call)
+    from_name = await get_user_display(
+        message.from_user.id, message.bot, message.chat.id, need_a_tag=True
     )
-    from_name = await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)
-    msg = f"❗️ Пользователь {from_name} вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call}"
-    if command.args:
-        msg += f"\n💬 Причина вызова: {command.args}"
+    rsn = f"\n💬 Причина вызова: {command.args}" if command.args else ""
+    msgs = [
+        await message.answer(
+            f"❗️ Пользователь {from_name} вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call[0]}{rsn}"
+        )
+    ]
+    if len(call) > 1:
+        for i in range(1, len(call)):
+            msgs.append(await message.answer(f"{call[i]}"))
     try:
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
         await message.bot.send_message(
@@ -523,11 +538,11 @@ async def all_(message: Message, command: CommandObject):
     ➡️ Новое использование /all
     ➡️ Чат: {message.chat.title}
     ℹ️ Пользователь: {from_name}
-    ℹ️ Текст: {msg}
+    ℹ️ Текст: {message.html_text}
     ℹ️ Дата: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}""",
             message_thread_id=settings.logs.general_thread_id,
             reply_markup=keyboards.join(0, invite) if invite else None,
         )
     except Exception:
         pass
-    return await message.answer(msg)
+    return msgs
