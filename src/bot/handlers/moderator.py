@@ -110,7 +110,7 @@ async def _prepare_nick_list(
                         user.user.id, bot, bot_chat_id, need_a_tag=True, no_tag=True
                     ),
                 )
-                async for user in managers.pyrogram_client.get_chat_members(chat_id)  # type: ignore
+                async for user in managers.pyrogram_client.get_chat_members(chat_id if str(chat_id).startswith('-100') else f'-100{chat_id}')  # type: ignore
                 if user.user.id not in have_nicks and not user.user.is_bot
             ],
             key=lambda i: i[1],
@@ -157,7 +157,9 @@ async def _prepare_nick_list(
 async def nick_list(message: Message, command: CommandObject):
     nicks = await managers.nicks.get_chat_nicks(message.chat.id)
     if not nicks:
-        return await message.answer("В этом чате нет пользователей с никами.")
+        return await message.answer("В этом чате нет пользователей с никами.", reply_markup=keyboards.nick_list_paginate(
+            message.from_user.id, 0, 0, message.chat.id, False
+        ))
 
     total, results, page, total_pages = await _prepare_nick_list(
         message.chat.id, 0, message.bot, message.chat.id, False

@@ -63,7 +63,6 @@ async def getwelcome_command(message: Message, command: CommandObject):
     return await message.answer(f"Текущее приветственное сообщение:\n{welcome.text}")
 
 
-
 @router.message(
     Command("silence"),
     F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
@@ -72,7 +71,11 @@ async def getwelcome_command(message: Message, command: CommandObject):
 async def silence_command(message: Message, command: CommandObject):
     chat_id = message.chat.id
 
-    if message.chat.type == ChatType.SUPERGROUP and getattr(message, "is_topic_message", False) and getattr(message, "message_thread_id", None):
+    if (
+        message.chat.type == ChatType.SUPERGROUP
+        and getattr(message, "is_topic_message", False)
+        and getattr(message, "message_thread_id", None)
+    ):
         key = f"silence_topic:{message.message_thread_id}"
         scope = "этого топика"
     else:
@@ -490,3 +493,40 @@ async def gunban_command(message: Message, command: CommandObject):
     except Exception:
         loguru.logger.exception("admin.gunban handler exception:")
         return await message.answer("Неизвестная ошибка.")
+
+
+@router.message(
+    Command("all"),
+    F.chat.type.in_({ChatType.SUPERGROUP, ChatType.GROUP}),
+    RoleFilter(enums.Role.senior_moderator),
+)
+async def all_(message: Message, command: CommandObject):
+    users = [
+        user.user.id
+        async for user in managers.pyrogram_client.get_chat_members(message.chat.id)  # type: ignore
+        if not user.user.is_bot
+    ]
+    call = "".join(
+        f'<a href="tg://user?id={user}">⁠</a>'
+        for user in users
+        if user is not None
+    )
+    msg = f"❗️ Пользователь asd вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call}"
+    if command.args:
+        msg += f"\n💬 Причина вызова: {command.args}"
+    try:
+        invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
+        await message.bot.send_message(
+            settings.logs.chat_id,
+            f"""#all
+    ➡️ Новое использование /all
+    ➡️ Чат: {message.chat.title}
+    ℹ️ Пользователь: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)}
+    ℹ️ Текст: {msg}
+    ℹ️ Дата: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}""",
+            message_thread_id=settings.logs.general_thread_id,
+            reply_markup=keyboards.join(0, invite) if invite else None,
+        )
+    except Exception:
+        pass
+    return await message.answer(msg)

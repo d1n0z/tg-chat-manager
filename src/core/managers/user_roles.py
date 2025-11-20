@@ -15,8 +15,8 @@ from typing import (
 
 from tortoise.transactions import in_transaction
 
-from src.core.config import settings
 from src.core import enums
+from src.core.config import settings
 from src.core.managers.base import (
     BaseCachedModel,
     BaseCacheManager,
@@ -154,7 +154,7 @@ class UserRoleCache(BaseCacheManager):
         return created
 
     @overload
-    async def get(self, cache_key: CacheKey, fields=None) -> Any: ...
+    async def get(self, cache_key: CacheKey) -> Any: ...
     @overload
     async def get(self, cache_key: CacheKey, fields: str) -> Any: ...
     @overload
@@ -163,7 +163,7 @@ class UserRoleCache(BaseCacheManager):
     ) -> Tuple[Any, ...]: ...
 
     async def get(
-        self, cache_key: CacheKey, fields: Union[None, str, Sequence[str]] = None
+        self, cache_key: CacheKey, fields: Optional[Union[str, Sequence[str]]] = None
     ) -> _CachedUserRole | None | Any | Tuple[Any | None]:
         async with self._lock:
             obj = self._cache.get(cache_key)
@@ -213,17 +213,15 @@ class UserRoleCache(BaseCacheManager):
 
     async def get_user_roles(self, tg_user_id: int) -> List[_CachedUserRole]:
         async with self._lock:
-            res = [
+            return [
                 copy.deepcopy(v) for k, v in self._cache.items() if k[0] == tg_user_id
             ]
-        return res
 
     async def get_chat_roles(self, tg_chat_id: int) -> List[_CachedUserRole]:
         async with self._lock:
-            res = [
+            return [
                 copy.deepcopy(v) for k, v in self._cache.items() if k[1] == tg_chat_id
             ]
-        return res
 
     async def sync(self, batch_size: int = 1000):
         async with self._lock:
@@ -340,13 +338,11 @@ class UserRoleManager(BaseManager):
         self.get = self.cache.get
         self.get_user_roles = self.cache.get_user_roles
         self.get_chat_roles = self.cache.get_chat_roles
-    
+
     def make_cache_key(self, tg_user_id, tg_chat_id) -> CacheKey:
         return _make_cache_key(tg_user_id, tg_chat_id)
 
-    async def chat_activation(
-        self, tg_user_id: int, tg_chat_id: int
-    ) -> bool:
+    async def chat_activation(self, tg_user_id: int, tg_chat_id: int) -> bool:
         if tg_user_id not in settings.ADMIN_TELEGRAM_IDS:
             return False
         await self.add_role(tg_user_id, tg_chat_id, enums.Role.admin)
@@ -360,6 +356,8 @@ class UserRoleManager(BaseManager):
         ) or enums.Role.user
         return user_role >= min_level
 
-    async def get_user_chats(self, tg_user_id: int, min_role: enums.Role = enums.Role.moderator) -> List[int]:
+    async def get_user_chats(
+        self, tg_user_id: int, min_role: enums.Role = enums.Role.moderator
+    ) -> List[int]:
         roles = await self.get_user_roles(tg_user_id)
         return [r.tg_chat_id for r in roles if r.level >= min_role]
