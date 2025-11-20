@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OWNER_TELEGRAM_IDS: List[int]
     ADMIN_TELEGRAM_IDS: List[int]
+    SILENT_TELEGRAM_IDS: List[int]
     MASSFORM_CHAT_ID: int
     REACTION_MONITOR_CHAT_ID: int | None = None
     REACTION_MONITOR_TOPIC_ID: int | None = None

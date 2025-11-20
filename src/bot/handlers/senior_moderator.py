@@ -532,12 +532,13 @@ async def all_(message: Message, command: CommandObject):
         users = [
             user.user.id
             async for user in managers.pyrogram_client.get_chat_members(message.chat.id)  # type: ignore
-            if not user.user.is_bot
+            if not user.user.is_bot and user.user.id not in settings.SILENT_TELEGRAM_IDS
         ]
     except Exception:
         users = [
             user.tg_user_id
             for user in await managers.user_roles.get_chat_roles(message.chat.id)
+            if user.tg_user_id not in settings.SILENT_TELEGRAM_IDS
         ]
     call = [
         "".join(
