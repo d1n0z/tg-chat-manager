@@ -512,10 +512,10 @@ async def all_(message: Message, command: CommandObject):
     call = [
         "".join(
             f'<a href="tg://user?id={user}">\u2060</a>'
-            for user in users[i : i + 49]
+            for user in users[i : i + 10]
             if user
         )
-        for i in range(0, len(users), 49)
+        for i in range(0, len(users), 10)
     ] or [""]
     from_name = await get_user_display(
         message.from_user.id, message.bot, message.chat.id, need_a_tag=True
