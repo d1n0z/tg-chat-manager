@@ -511,7 +511,8 @@ async def all_(message: Message, command: CommandObject):
         for user in users
         if user is not None
     )
-    msg = f"❗️ Пользователь asd вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call}"
+    from_name = await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)
+    msg = f"❗️ Пользователь {from_name} вызвал Вас. [{len(users)}/{await message.bot.get_chat_member_count(message.chat.id)}]{call}"
     if command.args:
         msg += f"\n💬 Причина вызова: {command.args}"
     try:
@@ -521,7 +522,7 @@ async def all_(message: Message, command: CommandObject):
             f"""#all
     ➡️ Новое использование /all
     ➡️ Чат: {message.chat.title}
-    ℹ️ Пользователь: {await get_user_display(message.from_user.id, message.bot, message.chat.id, need_a_tag=True)}
+    ℹ️ Пользователь: {from_name}
     ℹ️ Текст: {msg}
     ℹ️ Дата: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}""",
             message_thread_id=settings.logs.general_thread_id,
