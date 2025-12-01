@@ -289,3 +289,7 @@ class ChatManager(BaseManager):
 
     async def deactivate(self, tg_chat_id: int):
         await self.cache.edit(tg_chat_id, is_active=False)
+
+    async def get_all_chats(self) -> List[_CachedChat]:
+        async with self._lock:
+            return list(self._cache.values())
