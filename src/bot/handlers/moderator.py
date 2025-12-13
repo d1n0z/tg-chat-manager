@@ -374,14 +374,6 @@ async def set_nick(message: Message, command: CommandObject):
         target_user_id = await get_user_id_by_username(username)
         if not target_user_id:
             return await message.answer(f"Пользователь @{username} не найден.")
-        if (
-            await message.bot.get_chat_member(message.chat.id, target_user_id)
-        ).status in [
-            ChatMemberStatus.LEFT,
-            ChatMemberStatus.KICKED,
-            ChatMemberStatus.RESTRICTED,
-        ]:
-            return await message.answer("Данный пользователь не находится в беседе.")
     else:
         return await message.answer(
             "Использование: /snick @username [ник] или ответом на сообщение."
