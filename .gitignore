@@ -47,7 +47,7 @@ site/
 logs/
 
 # Production
-.env
+*.env
 *.session
 *.session-journal
 migrations
