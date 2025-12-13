@@ -9,7 +9,6 @@ dependencies = [
     "aiogram>=3.22.0",
     "aiolimiter>=1.2.1",
     "asyncpg>=0.30.0",
-    "fastapi[standard]>=0.119.0",
     "loguru>=0.7.3",
     "pydantic-settings>=2.11.0",
     "pyrogram>=2.0.106",
