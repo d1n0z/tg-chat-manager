@@ -3,7 +3,7 @@ name = "tg-chat-manager"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "aerich[toml]>=0.9.2",
     "aiogram>=3.22.0",
