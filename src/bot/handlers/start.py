@@ -9,7 +9,7 @@ from typing import Union
 import loguru
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
 from src.bot import states
@@ -65,6 +65,15 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
                 message_or_callback_querry.bot, message_or_callback_querry.from_user.id
             ), all_chats_access
         ),
+    )
+
+
+@router.message(Command("start"), F.chat.type != ChatType.PRIVATE)
+async def start_group(message: Message):
+    await message.bot.send_message(
+        message.chat.id,
+        'Для активации бота в этом чате пользователю с правами "Администратора" необходимо нажать кнопку ниже.',
+        reply_markup=keyboards.activate(-1),
     )
 
 
