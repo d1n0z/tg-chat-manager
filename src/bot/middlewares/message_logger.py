@@ -33,40 +33,49 @@ class MessageLoggerMiddleware(BaseMiddleware):
                 and chat.id == settings.REACTION_MONITOR_CHAT_ID
             ):
                 message_id = event.message_reaction.message_id
-                if media_group := await managers.message_logs.get_message_media_group(chat.id, message_id):
-                    if media_group_messages := await managers.message_logs.get_media_group_messages(chat.id, media_group):
+                if media_group := await managers.message_logs.get_message_media_group(
+                    chat.id, message_id
+                ):
+                    if (
+                        media_group_messages
+                        := await managers.message_logs.get_media_group_messages(
+                            chat.id, media_group
+                        )
+                    ):
                         for message in media_group_messages:
                             try:
-                                await managers.reaction_watches.mark_resolved(chat.id, message)
+                                await managers.reaction_watches.mark_resolved(
+                                    chat.id, message
+                                )
                             except Exception:
                                 pass
                         return
                 try:
-                    await managers.reaction_watches.mark_resolved(
-                        chat.id, message_id
-                    )
+                    await managers.reaction_watches.mark_resolved(chat.id, message_id)
                 except Exception:
                     logger.exception("Failed to mark reaction resolved:")
                 return
 
             if event.message:
+                if event.message.from_user:
+                    await managers.user_roles.chat_activation(
+                        event.message.from_user.id, chat.id
+                    )
                 await managers.message_logs.add_message(
-                    event.message.chat.id,
-                    event.message.message_id,
-                    event.message.message_thread_id,
+                    chat.id, event.message.message_id, event.message.message_thread_id
                 )
                 try:
                     if (
                         getattr(settings, "REACTION_MONITOR_CHAT_ID", None)
                         and getattr(settings, "REACTION_MONITOR_TOPIC_ID", None)
-                        and event.message.chat.id == settings.REACTION_MONITOR_CHAT_ID
+                        and chat.id == settings.REACTION_MONITOR_CHAT_ID
                         and event.message.message_thread_id
                         == settings.REACTION_MONITOR_TOPIC_ID
                         and event.message.from_user
                         and not event.message.from_user.is_bot
                     ):
                         await managers.reaction_watches.add_watch(
-                            event.message.chat.id,
+                            chat.id,
                             event.message.message_id,
                             event.message.message_thread_id,
                         )

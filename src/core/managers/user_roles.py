@@ -192,6 +192,8 @@ class UserRoleCache(BaseCacheManager):
         key = _make_cache_key(tg_user_id, tg_chat_id)
         async with self._lock:
             r = self._cache[key]
+            if r.level == level:
+                return
             r.level = level
         if assigned_by_tg is not None:
             assigned_by, _ = await self.repo.ensure_user(assigned_by_tg)
