@@ -1120,7 +1120,7 @@ async def gkick_command(message: Message, command: CommandObject):
                 except Exception:
                     target_role = enums.Role.user
 
-                if target_role >= initiator_role:
+                if target_role == enums.Role.user or target_role >= initiator_role:
                     continue
 
                 try:

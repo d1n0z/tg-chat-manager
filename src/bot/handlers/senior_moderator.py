@@ -334,7 +334,7 @@ async def gban_command(message: Message, command: CommandObject):
                     )
                     or enums.Role.user
                 )
-                if target_role >= initiator_role:
+                if target_role == enums.Role.user or target_role >= initiator_role:
                     continue
 
                 bot_member = await message.bot.get_chat_member(
