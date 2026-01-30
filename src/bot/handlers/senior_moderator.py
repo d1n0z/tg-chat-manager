@@ -318,14 +318,11 @@ async def gban_command(message: Message, command: CommandObject):
 
         for tg_chat_id in tg_chat_ids:
             try:
-                initiator_role = (
-                    await managers.user_roles.get(
-                        managers.user_roles.make_cache_key(
-                            message.from_user.id, tg_chat_id
-                        ),
-                        "level",
-                    )
-                    or enums.Role.user
+                initiator_role = await managers.user_roles.get(
+                    managers.user_roles.make_cache_key(
+                        message.from_user.id, tg_chat_id
+                    ),
+                    "level",
                 )
                 target_role = (
                     await managers.user_roles.get(
@@ -334,7 +331,7 @@ async def gban_command(message: Message, command: CommandObject):
                     )
                     or enums.Role.user
                 )
-                if target_role == enums.Role.user or target_role >= initiator_role:
+                if initiator_role is not None and target_role >= initiator_role:
                     continue
 
                 bot_member = await message.bot.get_chat_member(
