@@ -1,7 +1,6 @@
 from enum import Enum
 from functools import total_ordering
 
-
 @total_ordering
 class Role(str, Enum):
     user = "Пользователь"
@@ -11,7 +10,7 @@ class Role(str, Enum):
 
     @property
     def level(self) -> int:
-        return list(Role).index(self)
+        return self.__class__._member_names_.index(self.name)
 
     def __eq__(self, other):
         if isinstance(other, int):
@@ -22,7 +21,7 @@ class Role(str, Enum):
 
     def __lt__(self, other):
         if isinstance(other, int):
-            return self.level == other
+            return self.level < other
         if not isinstance(other, Role):
             return NotImplemented
         return self.level < other.level
