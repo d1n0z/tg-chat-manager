@@ -90,7 +90,7 @@ class ClusterCache(BaseCacheManager):
         async with self._lock:
             return self._cache.get(cluster_id)
 
-    async def add_chat(self, cluster_id: int, tg_chat_id: int):
+    async def add_chat(self, cluster_id: int, tg_chat_id: int) -> None:
         async with self._lock:
             if cluster_id not in self._cache:
                 cluster = await self.repo.get_record(cluster_id)
