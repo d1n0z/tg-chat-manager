@@ -311,13 +311,13 @@ async def staff_list(message: Message, command: CommandObject):
 
     by_role = {}
     for role in roles:
-        if role.level not in by_role:
-            by_role[role.level] = []
-        by_role[role.level].append(role.tg_user_id)
+        if role.level.level not in by_role:
+            by_role[role.level.level] = []
+        by_role[role.level.level].append(role.tg_user_id)
 
     text = "Список администрации:\n\n"
-    for level in sorted(by_role.keys(), key=lambda x: x.level, reverse=True):
-        text += f"<b>{level.value.title()}:</b>\n"
+    for level in sorted(by_role.keys(), reverse=True):
+        text += f"<b>{enums.Role.from_level(level).title()}:</b>\n"
         staff = []
         for tg_user_id in by_role[level]:
             username = await get_user_display(
