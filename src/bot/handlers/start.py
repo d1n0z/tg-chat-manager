@@ -63,7 +63,8 @@ async def start(message_or_callback_querry: Union[Message, CallbackQuery]):
             message_or_callback_querry.from_user.id,
             await user_in_massform_chat(
                 message_or_callback_querry.bot, message_or_callback_querry.from_user.id
-            ), all_chats_access
+            ),
+            all_chats_access,
         ),
     )
 
@@ -196,7 +197,7 @@ async def massform_gather_nicks(message: Message, state: FSMContext):
         return await message.answer("Системная ошибка. Пожалуйста, попробуйте ещё раз.")
     text = "⚙️ <b>Созданные формы:</b>\n\n"
     for i in range(0, len(nicks), 100):
-        for nick in nicks[i:i + 100]:
+        for nick in nicks[i : i + 100]:
             text += f"<code>{form.replace('@', f'{nick}')}</code>\n"
         msg = await message.answer(text)
         text = ""
@@ -329,7 +330,7 @@ async def all_chats(
                 or f"Chat {tg_cid}"
             )
         except Exception:
-            pass
+            loguru.logger.exception(f"Failed to fetch chat: {tg_cid}")
         else:
             chat_names.append((tg_cid, title))
 
