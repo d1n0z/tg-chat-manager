@@ -356,10 +356,10 @@ class UserRoleManager(BaseManager):
         user_role = (
             await self.get(_make_cache_key(tg_user_id, tg_chat_id), "level")
         ) or enums.Role.user
-        return user_role >= min_level
+        return user_role.level >= min_level.level
 
     async def get_user_chats(
         self, tg_user_id: int, min_role: enums.Role = enums.Role.moderator
     ) -> List[int]:
         roles = await self.get_user_roles(tg_user_id)
-        return [r.tg_chat_id for r in roles if r.level >= min_role]
+        return [r.tg_chat_id for r in roles if r.level.level >= min_role.level]
