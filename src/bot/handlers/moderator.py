@@ -1102,37 +1102,13 @@ async def gkick_command(message: Message, command: CommandObject):
         kicked = []
         for tg_chat_id in tg_chat_ids:
             try:
-                initiator_role = await managers.user_roles.get(
-                    managers.user_roles.make_cache_key(
-                        message.from_user.id, tg_chat_id
-                    ),
-                    "level",
-                )
+                await message.bot.ban_chat_member(tg_chat_id, user_id)
+                if await message.bot.unban_chat_member(tg_chat_id, user_id):
+                    kicked.append(tg_chat_id)
+                await managers.nicks.remove_nick(user_id, tg_chat_id)
+                await managers.user_roles.remove_role(user_id, tg_chat_id)
             except Exception:
                 pass
-            else:
-                try:
-                    target_role = (
-                        await managers.user_roles.get(
-                            managers.user_roles.make_cache_key(user_id, tg_chat_id),
-                            "level",
-                        )
-                        or enums.Role.user
-                    )
-                except Exception:
-                    target_role = enums.Role.user
-
-                if initiator_role is not None and target_role >= initiator_role:
-                    continue
-
-                try:
-                    await message.bot.ban_chat_member(tg_chat_id, user_id)
-                    if await message.bot.unban_chat_member(tg_chat_id, user_id):
-                        kicked.append(tg_chat_id)
-                    await managers.nicks.remove_nick(user_id, tg_chat_id)
-                    await managers.user_roles.remove_role(user_id, tg_chat_id)
-                except Exception:
-                    pass
 
         kicked_titles = []
         for tg_chat_id in kicked:
@@ -1145,6 +1121,11 @@ async def gkick_command(message: Message, command: CommandObject):
         )
         if kicked:
             invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
+
+            initiator_role = await managers.user_roles.get(
+                managers.user_roles.make_cache_key(message.from_user.id, tg_chat_id),
+                "level",
+            )
             await message.bot.send_message(
                 chat_id=settings.logs.chat_id,
                 text=f"""#gkick

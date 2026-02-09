@@ -318,22 +318,6 @@ async def gban_command(message: Message, command: CommandObject):
 
         for tg_chat_id in tg_chat_ids:
             try:
-                initiator_role = await managers.user_roles.get(
-                    managers.user_roles.make_cache_key(
-                        message.from_user.id, tg_chat_id
-                    ),
-                    "level",
-                )
-                target_role = (
-                    await managers.user_roles.get(
-                        managers.user_roles.make_cache_key(target_user_id, tg_chat_id),
-                        "level",
-                    )
-                    or enums.Role.user
-                )
-                if initiator_role is not None and target_role >= initiator_role:
-                    continue
-
                 bot_member = await message.bot.get_chat_member(
                     tg_chat_id, message.bot.id
                 )
@@ -378,6 +362,15 @@ async def gban_command(message: Message, command: CommandObject):
             message.from_user.id, message.bot, message.chat.id
         )
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
+        try:
+            initiator_role = await managers.user_roles.get(
+                managers.user_roles.make_cache_key(
+                    message.from_user.id, tg_chat_id
+                ),
+                "level",
+            )
+        except Exception:
+            pass
         await message.bot.send_message(
             settings.logs.chat_id,
             f"""#gban
