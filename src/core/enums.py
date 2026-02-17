@@ -1,8 +1,6 @@
 from enum import Enum
-from functools import total_ordering
 
 
-@total_ordering
 class Role(str, Enum):
     user = "Пользователь"
     moderator = "Модератор"
@@ -19,17 +17,3 @@ class Role(str, Enum):
             return cls[cls._member_names_[level]]
         except (IndexError, TypeError):
             raise ValueError(f"Invalid role level: {level}")
-
-    def __eq__(self, other):
-        if isinstance(other, int):
-            return self.level == other
-        if not isinstance(other, Role):
-            return NotImplemented
-        return self.level == other.level
-
-    def __lt__(self, other):
-        if isinstance(other, int):
-            return self.level < other
-        if not isinstance(other, Role):
-            return NotImplemented
-        return self.level < other.level

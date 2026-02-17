@@ -123,7 +123,7 @@ async def set_role(message: Message, command: CommandObject):
         return await message.answer(help_text)
 
     try:
-        role = list(enums.Role)[int(role_str)]
+        role = enums.Role.from_level(int(role_str))
     except ValueError:
         return await message.answer("Неверная роль. Введите от 1 до 3.")
 
@@ -137,7 +137,7 @@ async def set_role(message: Message, command: CommandObject):
         )
         or enums.Role.user
     )
-    if target_role == role:
+    if target_role.level == role.level:
         return await message.answer("У пользователя уже есть эти права.")
 
     author_role = (
@@ -233,7 +233,7 @@ async def remove_role(message: Message, command: CommandObject):
     if not target_role:
         return await message.answer("У пользователя нет прав.")
 
-    if target_role and target_role.level >= author_role.level and not is_owner:
+    if target_role.level >= author_role.level and not is_owner:
         return await message.answer(
             "Нельзя удалить роль пользователя с ролью равной или выше вашей."
         )
@@ -332,6 +332,7 @@ async def gban_command(message: Message, command: CommandObject):
                     await managers.user_roles.remove_role(target_user_id, tg_chat_id)
                     await message.bot.ban_chat_member(message.chat.id, target_user_id)
                     await message.bot.unban_chat_member(message.chat.id, target_user_id)
+                await asyncio.sleep(0.1)
             except Exception:
                 pass
 
@@ -364,9 +365,7 @@ async def gban_command(message: Message, command: CommandObject):
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
         try:
             initiator_role = await managers.user_roles.get(
-                managers.user_roles.make_cache_key(
-                    message.from_user.id, tg_chat_id
-                ),
+                managers.user_roles.make_cache_key(message.from_user.id, tg_chat_id),
                 "level",
             )
         except Exception:
@@ -449,7 +448,7 @@ async def gunban_command(message: Message, command: CommandObject):
                     )
                     or enums.Role.user
                 )
-                if target_role >= initiator_role:
+                if target_role.level >= initiator_role.level:
                     continue
                 await message.bot.unban_chat_member(tg_chat_id, target_user_id)
                 await managers.users.edit(target_user_id, banned_until=None)

@@ -1,5 +1,5 @@
-from typing import Optional
-from aiogram.filters import BaseFilter, Command as AiogramCommand
+from aiogram.filters import BaseFilter
+from aiogram.filters import Command as AiogramCommand
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -14,8 +14,11 @@ class RoleFilter(BaseFilter):
     async def __call__(self, message: Message) -> bool:
         if not message.from_user or not message.chat:
             return False
-        user_level: Optional[int] = (await managers.user_roles.get(managers.user_roles.make_cache_key(message.from_user.id, message.chat.id), "level")).level
-        if user_level is not None and user_level >= self.min_level:
+        user_level = await managers.user_roles.get(
+            managers.user_roles.make_cache_key(message.from_user.id, message.chat.id),
+            "level",
+        )
+        if user_level is not None and user_level.level >= self.min_level:
             return True
         if self.check_is_owner:
             return await managers.users.is_owner(message.from_user.id)

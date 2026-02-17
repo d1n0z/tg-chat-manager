@@ -86,8 +86,8 @@ async def stats(message: Message, command: CommandObject):
                     "level",
                 )
                 or enums.Role.user
-            )
-            >= enums.Role.senior_moderator
+            ).level
+            >= enums.Role.senior_moderator.level
         ):
             username = message.from_user.username
             user_id = message.from_user.id
@@ -180,7 +180,7 @@ async def grant_role_choice_handler(
         )
         or enums.Role.user
     )
-    if role >= initiator_role and not is_owner:
+    if role.level >= initiator_role.level and not is_owner:
         return await query.answer("Нельзя выдать роль большую или равную вашей роли.")
 
     target_role = (
@@ -190,7 +190,7 @@ async def grant_role_choice_handler(
         )
         or enums.Role.user
     )
-    if target_role >= initiator_role and not is_owner:
+    if target_role.level >= initiator_role.level and not is_owner:
         return await query.answer("Нельзя выдать роль человеку, старшему по роли.")
 
     await managers.user_roles.add_role(

@@ -1,3 +1,4 @@
+import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
@@ -496,7 +497,7 @@ async def mute_user(message: Message, command: CommandObject):
         )
         or enums.Role.user
     )
-    if target_role >= initiator_role:
+    if target_role.level >= initiator_role.level:
         return await message.answer(
             "Вы не можете замутить пользователя с равной или выше ролью."
         )
@@ -588,7 +589,7 @@ async def unmute_user(message: Message, command: CommandObject):
         )
         or enums.Role.user
     )
-    if target_role >= initiator_role:
+    if target_role.level >= initiator_role.level:
         return await message.answer(
             "Вы не можете размутить пользователя с равной или выше ролью."
         )
@@ -802,7 +803,7 @@ async def kick_command(
             or enums.Role.user
         )
 
-        if target_role >= initiator_role:
+        if target_role.level >= initiator_role.level:
             return await message_or_query.answer(
                 "Вы не можете кикнуть пользователя с равной или выше ролью."
             )
@@ -925,7 +926,7 @@ async def ban_command(
             )
             or enums.Role.user
         )
-        if target_role >= initiator_role:
+        if target_role.level >= initiator_role.level:
             return await message_or_query.answer(
                 "Вы не можете забанить пользователя с равной или выше ролью."
             )
@@ -1030,7 +1031,7 @@ async def unban_command(message: Message, command: CommandObject):
         )
         or enums.Role.user
     )
-    if target_role >= initiator_role:
+    if target_role.level >= initiator_role.level:
         return await message.answer(
             "Вы не можете разбанить пользователя с равной или выше ролью."
         )
@@ -1107,6 +1108,7 @@ async def gkick_command(message: Message, command: CommandObject):
                     kicked.append(tg_chat_id)
                 await managers.nicks.remove_nick(user_id, tg_chat_id)
                 await managers.user_roles.remove_role(user_id, tg_chat_id)
+                await asyncio.sleep(0.1)
             except Exception:
                 pass
 

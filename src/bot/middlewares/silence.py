@@ -2,11 +2,11 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.event.bases import CancelHandler
-from aiogram.types import Update
 from aiogram.enums import ChatType
+from aiogram.types import Update
 
-from src.core import managers, enums
 from src.bot.types import Message
+from src.core import enums, managers
 
 
 class SilenceMiddleware(BaseMiddleware):
@@ -52,7 +52,7 @@ class SilenceMiddleware(BaseMiddleware):
         except Exception:
             role = enums.Role.user
 
-        if role is not None and role != enums.Role.user:
+        if role is not None and role.level != enums.Role.user.level:
             return await handler(event, data)
 
         try:
