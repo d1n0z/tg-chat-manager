@@ -16,8 +16,8 @@ from src.bot import states
 from src.bot.filters import Command
 from src.bot.keyboards import callbackdata, keyboards
 from src.bot.types import AiogramCallbackQuery, CallbackQuery, Message
-from src.bot.utils import get_chat_info, get_user_display
-from src.core import enums, managers
+from src.bot.utils import get_chat_info, get_user_chats, get_user_display
+from src.core import managers
 from src.core.config import settings
 
 
@@ -318,21 +318,7 @@ async def ip_analytics_gather(message: Message, state: FSMContext):
 async def all_chats(
     query: CallbackQuery, callback_data: callbackdata.ChatsPaginate | None = None
 ):
-    tg_chat_ids = await managers.user_roles.get_user_chats(
-        query.from_user.id, enums.Role.moderator
-    )
-    chat_names = []
-    for tg_cid in tg_chat_ids:
-        try:
-            title = (
-                await managers.chats.get(tg_cid, "title")
-                or (await query.bot.get_chat(tg_cid)).title
-                or f"Chat {tg_cid}"
-            )
-        except Exception:
-            loguru.logger.exception(f"Failed to fetch chat: {tg_cid}")
-        else:
-            chat_names.append((tg_cid, title))
+    chat_names = await get_user_chats(query.from_user.id, query.bot)
 
     page = callback_data.page if callback_data else 0
     per_page = 10
@@ -350,6 +336,8 @@ async def all_chats(
 @router.callback_query(callbackdata.ChatSelect.filter())
 async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSelect):
     tg_chat_id = int(callback_data.chat_id)
+    if tg_chat_id not in await get_user_chats(query.from_user.id, query.bot):
+        return
 
     existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
     invite_url = None
@@ -381,6 +369,8 @@ async def generate_invite(
     query: CallbackQuery, callback_data: callbackdata.GenerateInvite
 ):
     tg_chat_id = int(callback_data.chat_id)
+    if tg_chat_id not in await get_user_chats(query.from_user.id, query.bot):
+        return
 
     bot = query.bot
     if not bot:

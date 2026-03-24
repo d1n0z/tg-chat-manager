@@ -2,12 +2,13 @@ import re
 from datetime import timedelta
 from typing import Optional
 
+import loguru
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import ResultChatMemberUnion
 
-from src.core import managers
+from src.core import enums, managers
 
 
 async def get_user_display(
@@ -17,7 +18,7 @@ async def get_user_display(
     member: ResultChatMemberUnion | None = None,
     need_a_tag: bool = False,
     nick_if_has: bool = False,
-    no_tag: bool = False
+    no_tag: bool = False,
 ) -> str:
     if chat_id and bot:
         username = await get_username_by_user_id(tg_user_id, chat_id, bot)
@@ -25,14 +26,20 @@ async def get_user_display(
             username = await managers.users.get(tg_user_id, "username")
     else:
         username = await managers.users.get(tg_user_id, "username")
-    a_href = f"tg://user?id={tg_user_id}" if not no_tag or not username else f"t.me/{username}"
+    a_href = (
+        f"tg://user?id={tg_user_id}"
+        if not no_tag or not username
+        else f"t.me/{username}"
+    )
     if nick_if_has and chat_id:
         nick = await managers.nicks.get_user_nick(tg_user_id, chat_id)
         if nick:
-            return f'<a href="{a_href}">{nick.nick}</a>' if need_a_tag else f"{nick.nick}"
+            return (
+                f'<a href="{a_href}">{nick.nick}</a>' if need_a_tag else f"{nick.nick}"
+            )
     if username:
         if no_tag:
-            return f'<a href="{a_href}">@\u200B{username}</a>'
+            return f'<a href="{a_href}">@\u200b{username}</a>'
         else:
             return f"@{username}"
     if (bot and chat_id) or member:
@@ -42,7 +49,7 @@ async def get_user_display(
             if member:
                 if member.user.username:
                     if no_tag:
-                        return f'<a href="{a_href}">@\u200B{member.user.username}</a>'
+                        return f'<a href="{a_href}">@\u200b{member.user.username}</a>'
                     else:
                         return f"@{member.user.username}"
                 if member.user.full_name:
@@ -54,9 +61,7 @@ async def get_user_display(
         except Exception:
             pass
     return (
-        f'<a href="{a_href}">ID_{tg_user_id}</a>'
-        if need_a_tag
-        else f"ID_{tg_user_id}"
+        f'<a href="{a_href}">ID_{tg_user_id}</a>' if need_a_tag else f"ID_{tg_user_id}"
     )
 
 
@@ -67,6 +72,23 @@ async def get_chat_title(chat_id: int, bot: Bot) -> str:
     except TelegramForbiddenError:
         pass
     return title
+
+
+async def get_user_chats(uid, bot):
+    tg_chat_ids = await managers.user_roles.get_user_chats(uid, enums.Role.moderator)
+    chat_names = []
+    for tg_cid in tg_chat_ids:
+        try:
+            title = (
+                await managers.chats.get(tg_cid, "title")
+                or (await bot.get_chat(tg_cid)).title
+                or f"Chat {tg_cid}"
+            )
+        except Exception:
+            loguru.logger.exception(f"Failed to fetch chat: {tg_cid}")
+        else:
+            chat_names.append((tg_cid, title))
+    return chat_names
 
 
 async def get_chat_info(bot: Bot, chat_id: int, invite_url) -> str:
@@ -102,13 +124,14 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
         return None
 
 
-async def get_username_by_user_id(user_id: int, chat_id: int, bot: Bot) -> Optional[str]:
+async def get_username_by_user_id(
+    user_id: int, chat_id: int, bot: Bot
+) -> Optional[str]:
     try:
         user = (await bot.get_chat_member(chat_id, user_id)).user
         return user.username
     except Exception:
         return
-    
 
 
 def parse_duration(duration_str: str) -> timedelta | None:
