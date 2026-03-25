@@ -336,7 +336,7 @@ async def all_chats(
 @router.callback_query(callbackdata.ChatSelect.filter())
 async def chat_selected(query: CallbackQuery, callback_data: callbackdata.ChatSelect):
     tg_chat_id = int(callback_data.chat_id)
-    if tg_chat_id not in await get_user_chats(query.from_user.id, query.bot):
+    if tg_chat_id not in [i[0] for i in await get_user_chats(query.from_user.id, query.bot)]:
         return
 
     existing_invites = await managers.invite_links.get_chat_invites(tg_chat_id)
@@ -369,7 +369,7 @@ async def generate_invite(
     query: CallbackQuery, callback_data: callbackdata.GenerateInvite
 ):
     tg_chat_id = int(callback_data.chat_id)
-    if tg_chat_id not in await get_user_chats(query.from_user.id, query.bot):
+    if tg_chat_id not in [i[0] for i in await get_user_chats(query.from_user.id, query.bot)]:
         return
 
     bot = query.bot

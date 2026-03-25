@@ -74,7 +74,7 @@ async def get_chat_title(chat_id: int, bot: Bot) -> str:
     return title
 
 
-async def get_user_chats(uid, bot):
+async def get_user_chats(uid, bot) -> list[tuple[int, str]]:
     tg_chat_ids = await managers.user_roles.get_user_chats(uid, enums.Role.moderator)
     chat_names = []
     for tg_cid in tg_chat_ids:
