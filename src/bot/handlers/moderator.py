@@ -593,24 +593,21 @@ async def unmute_user(message: Message, command: CommandObject):
         return await message.answer(
             "Вы не можете размутить пользователя с равной или выше ролью."
         )
-    if (await message.bot.get_chat_member(message.chat.id, target_user_id)).status in [
-        ChatMemberStatus.LEFT,
-        ChatMemberStatus.KICKED,
-        ChatMemberStatus.RESTRICTED,
-    ]:
-        return await message.answer("Данный пользователь не находится в беседе.")
 
-    await message.bot.restrict_chat_member(
-        message.chat.id,
-        target_user_id,
-        ChatPermissions(
-            can_send_messages=True,
-            can_send_media_messages=True,
-            can_send_polls=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True,
-        ),
-    )
+    try:
+        await message.bot.restrict_chat_member(
+            message.chat.id,
+            target_user_id,
+            ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+            ),
+        )
+    except Exception:
+        return await message.answer("Произошла непредвиденная ошибка! Убедитесь, что данный пользователь находится в беседе и попробуйте ещё раз позже.")
 
     await managers.mutes.remove_mute(target_user_id, message.chat.id)
     username = await get_user_display(target_user_id, message.bot, message.chat.id)
