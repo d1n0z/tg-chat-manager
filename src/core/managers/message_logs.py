@@ -13,12 +13,30 @@ class MessageLogRepository(BaseRepository):
         media_group_id: Optional[str] = None,
     ):
         chat, _ = await Chat.get_or_create(tg_chat_id=tg_chat_id)
-        await MessageLog.create(
+        log, created = await MessageLog.get_or_create(
             chat_id=chat.id,
             message_id=message_id,
-            message_thread_id=message_thread_id,
-            media_group_id=media_group_id,
+            defaults={
+                "message_thread_id": message_thread_id,
+                "media_group_id": media_group_id,
+            },
         )
+        if created:
+            return log
+
+        update_fields: list[str] = []
+        if (
+            message_thread_id is not None
+            and log.message_thread_id != message_thread_id
+        ):
+            log.message_thread_id = message_thread_id
+            update_fields.append("message_thread_id")
+        if media_group_id is not None and log.media_group_id != media_group_id:
+            log.media_group_id = media_group_id
+            update_fields.append("media_group_id")
+        if update_fields:
+            await log.save(update_fields=update_fields)
+        return log
 
     async def get_last_n_messages(
         self, tg_chat_id: int, count: int, message_thread_id: Optional[int] = None
@@ -60,9 +78,17 @@ class MessageLogRepository(BaseRepository):
         query = MessageLog.filter(chat_id=chat.id, message_id=message_id)
         if message_thread_id is not None:
             query = query.filter(message_thread_id=message_thread_id)
-        else:
-            query = query.filter(message_thread_id__isnull=True)
-        return getattr(await query.first(), "media_group_id", None)
+        return getattr(await query.order_by("-created_at").first(), "media_group_id", None)
+
+    async def get_message_log(
+        self, tg_chat_id: int, message_id: int
+    ) -> Optional[MessageLog]:
+        chat = await Chat.filter(tg_chat_id=tg_chat_id).first()
+        if not chat:
+            return None
+        return await MessageLog.filter(
+            chat_id=chat.id, message_id=message_id
+        ).order_by("-created_at").first()
 
 
 class MessageLogManager(BaseManager):
@@ -74,3 +100,4 @@ class MessageLogManager(BaseManager):
         self.get_last_n_messages = self.repo.get_last_n_messages
         self.get_media_group_messages = self.repo.get_media_group_messages
         self.get_message_media_group = self.repo.get_message_media_group
+        self.get_message_log = self.repo.get_message_log

@@ -33,13 +33,17 @@ class MessageLoggerMiddleware(BaseMiddleware):
                 and chat.id == settings.REACTION_MONITOR_CHAT_ID
             ):
                 message_id = event.message_reaction.message_id
-                if media_group := await managers.message_logs.get_message_media_group(
-                    chat.id, message_id
-                ):
+                if (
+                    message_log := await managers.message_logs.get_message_log(
+                        chat.id, message_id
+                    )
+                ) and message_log.media_group_id:
                     if (
                         media_group_messages
                         := await managers.message_logs.get_media_group_messages(
-                            chat.id, media_group
+                            chat.id,
+                            message_log.media_group_id,
+                            message_log.message_thread_id,
                         )
                     ):
                         for message in media_group_messages:
@@ -62,7 +66,10 @@ class MessageLoggerMiddleware(BaseMiddleware):
                         event.message.from_user.id, chat.id
                     )
                 await managers.message_logs.add_message(
-                    chat.id, event.message.message_id, event.message.message_thread_id
+                    chat.id,
+                    event.message.message_id,
+                    event.message.message_thread_id,
+                    event.message.media_group_id,
                 )
                 try:
                     if (
