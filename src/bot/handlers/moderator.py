@@ -20,6 +20,42 @@ from src.core.config import settings
 
 router = Router()
 
+DEFAULT_MUTE_DURATION = timedelta(days=400)
+
+
+def _parse_mute_duration_token(token: str) -> tuple[timedelta | None, bool]:
+    normalized = token.strip().lower()
+    if not normalized:
+        return None, False
+    if normalized.isdigit():
+        return timedelta(minutes=int(normalized)), True
+
+    duration = parse_duration(normalized)
+    if duration is not None:
+        return duration, True
+
+    return None, bool(re.fullmatch(r"\d+\S+", normalized))
+
+
+def _parse_mute_duration_and_reason(
+    raw_args: str | None,
+) -> tuple[timedelta, str | None] | None:
+    if not raw_args or not raw_args.strip():
+        return DEFAULT_MUTE_DURATION, None
+
+    raw_args = raw_args.strip()
+    first_token, *rest = raw_args.split(maxsplit=1)
+    duration, looks_like_duration = _parse_mute_duration_token(first_token)
+
+    if looks_like_duration and duration is None:
+        return None
+
+    if duration is not None:
+        reason = rest[0].strip() if rest and rest[0].strip() else None
+        return duration, reason
+
+    return DEFAULT_MUTE_DURATION, raw_args
+
 
 @router.message(
     Command("pin"),
@@ -238,8 +274,11 @@ async def clear_messages(message: Message, command: CommandObject):
             name = f"@{message.from_user.username}"
         else:
             name = f'<a href="tg://user?id={message.from_user.id}">ID_{message.from_user.id}</a>'
+        cleared_text = (
+            f"{command.args} сообщений" if len(message_ids) > 1 else "сообщение"
+        )
         return await message.answer(
-            f"Пользователь {name} очистил {f'{command.args} сообщений' if len(message_ids) > 1 else 'сообщение'}."
+            f"Пользователь {name} очистил {cleared_text}."
         )
     except Exception:
         return await message.answer("Ошибка при удалении сообщений.")
@@ -428,8 +467,9 @@ async def remove_nick(message: Message, command: CommandObject):
     setter = await get_user_display(
         message.from_user.id, message.bot, message.chat.id, need_a_tag=True
     )
+    removed_nick = f' "{nick.nick}"' if nick else ""
     return await message.answer(
-        f"{setter} удалил никнейм{f' "{nick.nick}"' if nick else ''} у пользователя {username}"
+        f"{setter} удалил никнейм{removed_nick} у пользователя {username}"
     )
 
 
@@ -443,23 +483,26 @@ async def mute_user(message: Message, command: CommandObject):
         message.reply_to_message
         and message.reply_to_message.from_user
         and not message.reply_to_message.is_topic_message
-        and len((command.args or "").split(maxsplit=2)) < 3
     ):
         target_user_id = message.reply_to_message.from_user.id
-        args = command.args.split(maxsplit=1) if command.args else []
-        duration = parse_duration(args[0]) if args else timedelta(days=400)
-        reason = args[1] if len(args) > 1 else None
+        parsed_args = _parse_mute_duration_and_reason(command.args)
+        if parsed_args is None:
+            return await message.answer(
+                "Неверный формат времени. Используйте: 10, 10m, 1h, 1d."
+            )
+        duration, reason = parsed_args
     else:
         try:
             if not command.args:
                 raise ValueError
-            args = command.args.split(maxsplit=2)
-            username = args[0].lstrip("@")
-            if len(args) > 1 and (duration := parse_duration(args[1])):
-                reason = args[2] if len(args) > 2 else None
-            else:
-                duration = timedelta(days=400)
-                reason = args[1] if len(args) > 1 else None
+            username, *rest = command.args.split(maxsplit=1)
+            username = username.lstrip("@")
+            parsed_args = _parse_mute_duration_and_reason(rest[0] if rest else None)
+            if parsed_args is None:
+                return await message.answer(
+                    "Неверный формат времени. Используйте: 10, 10m, 1h, 1d."
+                )
+            duration, reason = parsed_args
         except Exception:
             return await message.answer(
                 "Использование: /mute @username [время] [причина] или ответом на сообщение."
@@ -471,7 +514,7 @@ async def mute_user(message: Message, command: CommandObject):
 
     if not duration:
         return await message.answer(
-            "Неверный формат времени. Используйте: 10m, 1h, 1d."
+            "Неверный формат времени. Используйте: 10, 10m, 1h, 1d."
         )
 
     if target_user_id == message.from_user.id:
@@ -548,8 +591,9 @@ async def mute_user(message: Message, command: CommandObject):
         )
     except Exception:
         pass
+    reason_text = f" по причине {reason}" if reason else ""
     return await message.answer(
-        f"{setter} замутил {username} {end_at_text}{f' по причине {reason}' if reason else ''}",
+        f"{setter} замутил {username} {end_at_text}{reason_text}",
         reply_markup=keyboards.mute_actions(message.from_user.id, target_user_id, True),
     )
 
@@ -680,8 +724,9 @@ async def mute_callback(query: CallbackQuery, callback_data: callbackdata.MuteAc
         if end_at - datetime.now(timezone.utc) < timedelta(days=3650)
         else "навсегда"
     )
+    reason_text = f" Причина: {reason}" if reason else ""
     await query.message.edit_text(
-        f"Пользователь {username} замучен {end_at_text}.{f' Причина: {reason}' if reason else ''}",
+        f"Пользователь {username} замучен {end_at_text}.{reason_text}",
         reply_markup=keyboards.mute_actions(
             query.from_user.id, callback_data.user_id, True
         ),
@@ -823,8 +868,9 @@ async def kick_command(
             message_thread_id=settings.logs.punishments_thread_id,
             reply_markup=keyboards.join(0, invite) if invite else None,
         )
+        reason_text = f" по причине: {reason}" if reason else ""
         return await message_or_query.answer(
-            f"{setter} кикнул @{username} из чата{f' по причине: {reason}' if reason else ''}"
+            f"{setter} кикнул @{username} из чата{reason_text}"
         )
     except Exception:
         loguru.logger.exception("admin.kick handler exception:")
@@ -981,8 +1027,9 @@ async def ban_command(
             message_thread_id=settings.logs.punishments_thread_id,
             reply_markup=keyboards.join(0, invite) if invite else None,
         )
+        reason_text = f" Причина: {reason}" if reason else ""
         return await message_or_query.answer(
-            f"{setter_name} забанил пользователя {username} {end_at_text}.{f' Причина: {reason}' if reason else ''}"
+            f"{setter_name} забанил пользователя {username} {end_at_text}.{reason_text}"
         )
     except Exception:
         loguru.logger.exception("admin.ban handler exception:")
@@ -1121,9 +1168,14 @@ async def gkick_command(message: Message, command: CommandObject):
         if kicked:
             invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
 
-            initiator_role = await managers.user_roles.get(
-                managers.user_roles.make_cache_key(message.from_user.id, tg_chat_id),
-                "level",
+            initiator_role = (
+                await managers.user_roles.get(
+                    managers.user_roles.make_cache_key(
+                        message.from_user.id, message.chat.id
+                    ),
+                    "level",
+                )
+                or enums.Role.user
             )
             await message.bot.send_message(
                 chat_id=settings.logs.chat_id,
@@ -1137,9 +1189,10 @@ async def gkick_command(message: Message, command: CommandObject):
                 message_thread_id=settings.logs.punishments_thread_id,
                 reply_markup=keyboards.join(0, invite) if invite else None,
             )
+            reason_text = f' по причине "{reason}"' if reason else ""
 
             return await message.answer(
-                f"{setter} исключил глобально пользователя @{username}{f' по причине "{reason}"' if reason else ''}\n\nИсключен из чатов:\n{kicked}"
+                f"{setter} исключил глобально пользователя @{username}{reason_text}\n\nИсключен из чатов:\n{kicked}"
             )
         return await message.answer(
             f"{'Не удалось исключить глобально пользователя' if username else 'Пользователь не найден: '} @{username}."

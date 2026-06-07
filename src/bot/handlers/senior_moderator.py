@@ -363,13 +363,15 @@ async def gban_command(message: Message, command: CommandObject):
             message.from_user.id, message.bot, message.chat.id
         )
         invite = await managers.chats.get(message.chat.id, "infinite_invite_link")
-        try:
-            initiator_role = await managers.user_roles.get(
-                managers.user_roles.make_cache_key(message.from_user.id, tg_chat_id),
+        initiator_role = (
+            await managers.user_roles.get(
+                managers.user_roles.make_cache_key(
+                    message.from_user.id, message.chat.id
+                ),
                 "level",
             )
-        except Exception:
-            pass
+            or enums.Role.user
+        )
         await message.bot.send_message(
             settings.logs.chat_id,
             f"""#gban
